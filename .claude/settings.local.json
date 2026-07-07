@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:chatgpt.com)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(git --version)",
+      "Bash(dotnet new *)"
+    ]
+  }
+}
