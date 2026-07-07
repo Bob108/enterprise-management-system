@@ -1,0 +1,235 @@
+@inject EmployeesClient Employees
+@inject DepartmentsClient Departments
+@inject DesignationsClient Designations
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_form.FirstName" Label="First name"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_form.LastName" Label="Last name"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_form.Email" Label="Email" InputType="InputType.Email"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_form.Phone" Label="Phone"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" @bind-Value="_form.DepartmentId" Label="Department"
+                               Variant="Variant.Outlined" Required="true">
+                        @foreach (var d in _departments)
+                        {
+                            <MudSelectItem T="int" Value="@d.Id">@d.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" @bind-Value="_form.DesignationId" Label="Designation"
+                               Variant="Variant.Outlined" Required="true">
+                        @foreach (var d in _designations)
+                        {
+                            <MudSelectItem T="int" Value="@d.Id">@d.Title</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="EmploymentStatus" @bind-Value="_form.Status" Label="Status"
+                               Variant="Variant.Outlined">
+                        @foreach (var s in Enum.GetValues<EmploymentStatus>())
+                        {
+                            <MudSelectItem T="EmploymentStatus" Value="@s">@s</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_form.HireDate" Label="Hire date"
+                                   Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_form.DateOfBirth" Label="Date of birth"
+                                   Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" @bind-Value="_form.Address" Label="Address"
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.subtitle1">Emergency contacts</MudText>
+                        <MudSpacer />
+                        <MudButton StartIcon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                   OnClick="AddContact">Add contact</MudButton>
+                    </MudStack>
+                </MudItem>
+                @foreach (var contact in _form.Contacts)
+                {
+                    <MudItem xs="12" sm="4">
+                        <MudTextField T="string" @bind-Value="contact.Name" Label="Name"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudTextField T="string" @bind-Value="contact.Relationship" Label="Relationship"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="10" sm="4">
+                        <MudTextField T="string" @bind-Value="contact.Phone" Label="Phone"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="2" sm="1" Class="d-flex align-center">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       OnClick="() => _form.Contacts.Remove(contact)" aria-label="Remove contact" />
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private sealed class ContactForm
+    {
+        public int? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Relationship { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+    }
+
+    private sealed class EmployeeForm
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public int DepartmentId { get; set; }
+        public int DesignationId { get; set; }
+        public EmploymentStatus Status { get; set; } = EmploymentStatus.Active;
+        public DateTime? HireDate { get; set; } = DateTime.Today;
+        public DateTime? DateOfBirth { get; set; }
+        public string? Address { get; set; }
+        public string RowVersion { get; set; } = string.Empty;
+        public List<ContactForm> Contacts { get; } = [];
+    }
+
+    private readonly EmployeeForm _form = new();
+    private List<DepartmentDto> _departments = [];
+    private List<DesignationDto> _designations = [];
+    private bool _loading = true;
+    private bool _saving;
+    private ApiError? _error;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public int? EmployeeId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var departmentsTask = Departments.GetAllAsync();
+        var designationsTask = Designations.GetAllAsync();
+        _departments = await departmentsTask ?? [];
+        _designations = await designationsTask ?? [];
+
+        if (EmployeeId is { } id)
+        {
+            var detail = await Employees.GetByIdAsync(id);
+            if (detail is not null)
+            {
+                _form.FirstName = detail.FirstName;
+                _form.LastName = detail.LastName;
+                _form.Email = detail.Email;
+                _form.Phone = detail.Phone;
+                _form.DepartmentId = detail.DepartmentId;
+                _form.DesignationId = detail.DesignationId;
+                _form.Status = detail.Status;
+                _form.HireDate = detail.HireDate.ToDateTime(TimeOnly.MinValue);
+                _form.DateOfBirth = detail.DateOfBirth?.ToDateTime(TimeOnly.MinValue);
+                _form.Address = detail.Address;
+                _form.RowVersion = detail.RowVersion;
+                _form.Contacts.AddRange(detail.EmergencyContacts.Select(c => new ContactForm
+                {
+                    Id = c.Id,
+                    Name = c.Name,
+                    Relationship = c.Relationship,
+                    Phone = c.Phone,
+                }));
+            }
+        }
+        else if (_departments.Count > 0 && _designations.Count > 0)
+        {
+            _form.DepartmentId = _departments[0].Id;
+            _form.DesignationId = _designations[0].Id;
+        }
+
+        _loading = false;
+    }
+
+    private void AddContact() => _form.Contacts.Add(new ContactForm());
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_form.FirstName) || string.IsNullOrWhiteSpace(_form.LastName)
+            || string.IsNullOrWhiteSpace(_form.Email) || _form.HireDate is null)
+        {
+            _error = new ApiError("First name, last name, email and hire date are required.", null);
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        var contacts = _form.Contacts
+            .Select(c => new EmergencyContactDto(c.Id, c.Name, c.Relationship, c.Phone))
+            .ToList();
+        var hireDate = DateOnly.FromDateTime(_form.HireDate.Value);
+        var dateOfBirth = _form.DateOfBirth is { } dob ? DateOnly.FromDateTime(dob) : (DateOnly?)null;
+
+        _error = EmployeeId is { } id
+            ? await Employees.UpdateAsync(id, new UpdateEmployeeRequest(
+                _form.FirstName, _form.LastName, _form.Email, _form.Phone,
+                _form.DepartmentId, _form.DesignationId, _form.Status,
+                hireDate, dateOfBirth, _form.Address, contacts, _form.RowVersion))
+            : await Employees.CreateAsync(new CreateEmployeeRequest(
+                _form.FirstName, _form.LastName, _form.Email, _form.Phone,
+                _form.DepartmentId, _form.DesignationId, _form.Status,
+                hireDate, dateOfBirth, _form.Address, contacts));
+
+        _saving = false;
+
+        if (_error is null)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+}

@@ -1,6 +1,8 @@
 using System.Security.Claims;
+using EMS.Domain.Entities;
 using EMS.Infrastructure.Identity;
 using EMS.Shared.Authorization;
+using EMS.Shared.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -74,6 +76,7 @@ public sealed class EmsDbInitializer(
         await context.Database.MigrateAsync(cancellationToken);
         await SeedRolesAsync();
         await SeedUsersAsync();
+        await SeedHrAsync(cancellationToken);
         logger.LogInformation("Database migrated and seeded");
     }
 
@@ -110,6 +113,75 @@ public sealed class EmsDbInitializer(
         // Dev-only demo accounts (design §16). Password policy: see DependencyInjection.
         await EnsureUserAsync("admin@ems.local", "Admin123!", "System Administrator", SuperAdminRole);
         await EnsureUserAsync("employee@ems.local", "Employee123!", "Demo Employee", "Employee");
+    }
+
+    private async Task SeedHrAsync(CancellationToken cancellationToken)
+    {
+        if (await context.Departments.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        var departments = new Dictionary<string, Department>
+        {
+            ["OPS"] = new() { Name = "Operations", Code = "OPS" },
+            ["FIN"] = new() { Name = "Finance", Code = "FIN" },
+            ["IT"] = new() { Name = "Information Technology", Code = "IT" },
+            ["HR"] = new() { Name = "Human Resources", Code = "HR" },
+            ["LOG"] = new() { Name = "Logistics", Code = "LOG" },
+        };
+        var designations = new Dictionary<string, Designation>
+        {
+            ["OM"] = new() { Title = "Operations Manager" },
+            ["SE"] = new() { Title = "Software Engineer" },
+            ["AC"] = new() { Title = "Accountant" },
+            ["HO"] = new() { Title = "HR Officer" },
+            ["LC"] = new() { Title = "Logistics Coordinator" },
+            ["TE"] = new() { Title = "Technician" },
+            ["DR"] = new() { Title = "Driver" },
+            ["SK"] = new() { Title = "Storekeeper" },
+        };
+        context.Departments.AddRange(departments.Values);
+        context.Designations.AddRange(designations.Values);
+
+        (string First, string Last, string Dept, string Desig, EmploymentStatus Status, DateOnly Hire)[] people =
+        [
+            ("Amina", "Okoro", "OPS", "OM", EmploymentStatus.Active, new(2021, 3, 15)),
+            ("Daniel", "Kimani", "IT", "SE", EmploymentStatus.Active, new(2022, 7, 1)),
+            ("Grace", "Mwangi", "FIN", "AC", EmploymentStatus.Active, new(2020, 1, 20)),
+            ("Peter", "Otieno", "LOG", "DR", EmploymentStatus.Active, new(2023, 2, 6)),
+            ("Lucy", "Njeri", "HR", "HO", EmploymentStatus.Active, new(2019, 11, 4)),
+            ("James", "Mutua", "OPS", "TE", EmploymentStatus.Probation, new(2025, 9, 22)),
+            ("Sarah", "Wanjiku", "IT", "SE", EmploymentStatus.Active, new(2024, 5, 13)),
+            ("David", "Omondi", "LOG", "SK", EmploymentStatus.Active, new(2021, 8, 30)),
+            ("Esther", "Achieng", "FIN", "AC", EmploymentStatus.OnLeave, new(2022, 4, 11)),
+            ("Michael", "Kariuki", "OPS", "TE", EmploymentStatus.Active, new(2023, 10, 2)),
+            ("Ruth", "Wambui", "HR", "HO", EmploymentStatus.Active, new(2024, 1, 8)),
+            ("Joseph", "Ndungu", "LOG", "DR", EmploymentStatus.Suspended, new(2020, 6, 17)),
+            ("Mary", "Akinyi", "IT", "SE", EmploymentStatus.Active, new(2025, 3, 3)),
+            ("Brian", "Kiprop", "LOG", "LC", EmploymentStatus.Active, new(2022, 12, 5)),
+            ("Naomi", "Chebet", "OPS", "TE", EmploymentStatus.Active, new(2024, 8, 19)),
+            ("Samuel", "Maina", "FIN", "AC", EmploymentStatus.Terminated, new(2018, 2, 26)),
+        ];
+
+        var number = 1;
+        foreach (var p in people)
+        {
+            context.Employees.Add(new Employee
+            {
+                EmployeeNumber = $"EMP-{number++:D4}",
+                FirstName = p.First,
+                LastName = p.Last,
+                Email = $"{p.First.ToLowerInvariant()}.{p.Last.ToLowerInvariant()}@northwind.example",
+                Phone = $"+254 7{number:D2} 000 {number:D3}",
+                Department = departments[p.Dept],
+                Designation = designations[p.Desig],
+                Status = p.Status,
+                HireDate = p.Hire,
+            });
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     private async Task EnsureUserAsync(string email, string password, string displayName, string role)

@@ -1,7 +1,9 @@
 <MudNavMenu>
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
     <MudNavGroup Title="Modules" Icon="@Icons.Material.Filled.Apps" Expanded="true">
-        <MudNavLink Icon="@Icons.Material.Filled.People" Disabled="true">Employees</MudNavLink>
+        <AuthorizeView Policy="@("perm:" + Permissions.Employees.View)">
+            <MudNavLink Href="/employees" Icon="@Icons.Material.Filled.People">Employees</MudNavLink>
+        </AuthorizeView>
         <MudNavLink Icon="@Icons.Material.Filled.Devices" Disabled="true">Assets</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.Inventory" Disabled="true">Inventory</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.LocalShipping" Disabled="true">Fleet</MudNavLink>
@@ -10,5 +12,10 @@
         <MudNavLink Icon="@Icons.Material.Filled.EventAvailable" Disabled="true">Leave</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.Assessment" Disabled="true">Reports</MudNavLink>
     </MudNavGroup>
-    <MudNavLink Icon="@Icons.Material.Filled.Settings" Disabled="true">Administration</MudNavLink>
+    <AuthorizeView Policy="@("perm:" + Permissions.Administration.Settings)">
+        <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.Settings" Expanded="false">
+            <MudNavLink Href="/admin/departments" Icon="@Icons.Material.Filled.AccountTree">Departments</MudNavLink>
+            <MudNavLink Href="/admin/designations" Icon="@Icons.Material.Filled.Badge">Designations</MudNavLink>
+        </MudNavGroup>
+    </AuthorizeView>
 </MudNavMenu>

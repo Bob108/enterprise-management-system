@@ -72,6 +72,7 @@ try
     }
 
     app.UseSerilogRequestLogging();
+    app.UseMiddleware<EMS.WebAPI.Middleware.ExceptionHandlingMiddleware>();
 
     if (app.Environment.IsDevelopment())
     {

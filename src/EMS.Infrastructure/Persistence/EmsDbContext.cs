@@ -8,13 +8,17 @@ using Microsoft.EntityFrameworkCore;
 namespace EMS.Infrastructure.Persistence;
 
 public class EmsDbContext(DbContextOptions<EmsDbContext> options)
-    : IdentityDbContext<ApplicationUser, ApplicationRole, int>(options)
+    : IdentityDbContext<ApplicationUser, ApplicationRole, int>(options), IUnitOfWork
 {
     private static readonly MethodInfo ApplySoftDeleteFilterMethod = typeof(EmsDbContext)
         .GetMethod(nameof(ApplySoftDeleteFilter), BindingFlags.NonPublic | BindingFlags.Static)!;
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<Designation> Designations => Set<Designation>();
+    public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<EmergencyContact> EmergencyContacts => Set<EmergencyContact>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

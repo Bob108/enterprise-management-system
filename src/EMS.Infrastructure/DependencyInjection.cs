@@ -1,7 +1,10 @@
 using EMS.Application.Common.Interfaces;
+using EMS.Domain.Common;
+using EMS.Domain.Repositories;
 using EMS.Infrastructure.Identity;
 using EMS.Infrastructure.Persistence;
 using EMS.Infrastructure.Persistence.Interceptors;
+using EMS.Infrastructure.Persistence.Repositories;
 using EMS.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +45,11 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<EmsDbInitializer>();
+
+        services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<EmsDbContext>());
+        services.AddScoped<IDepartmentRepository, DepartmentRepository>();
+        services.AddScoped<IDesignationRepository, DesignationRepository>();
+        services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 
         return services;
     }

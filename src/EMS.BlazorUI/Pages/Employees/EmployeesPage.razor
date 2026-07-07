@@ -1,0 +1,185 @@
+@page "/employees"
+@attribute [Authorize(Policy = "perm:" + Permissions.Employees.View)]
+@inject EmployeesClient Employees
+@inject DepartmentsClient Departments
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>EMS — Employees</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Employees</MudText>
+    <MudSpacer />
+    @if (_canCreate)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   Variant="Variant.Filled" OnClick="() => OpenEditorAsync(null)">
+            New employee
+        </MudButton>
+    }
+</MudStack>
+
+<MudTable T="EmployeeListItemDto" @ref="_table" ServerData="LoadServerDataAsync"
+          Dense="true" Hover="true" Elevation="1">
+    <ToolBarContent>
+        <MudTextField T="string" @bind-Value="_search" Placeholder="Search name, email or number"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" DebounceInterval="400" OnDebounceIntervalElapsed="ReloadAsync"
+                      Clearable="true" Class="mr-4 mt-0" />
+        <MudSelect T="int?" Value="_departmentId" ValueChanged="OnDepartmentChangedAsync"
+                   Label="Department" Clearable="true" Dense="true" Class="mr-4 mt-0"
+                   Style="min-width: 200px;">
+            @foreach (var d in _departments)
+            {
+                <MudSelectItem T="int?" Value="@((int?)d.Id)">@d.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="EmploymentStatus?" Value="_status" ValueChanged="OnStatusChangedAsync"
+                   Label="Status" Clearable="true" Dense="true" Style="min-width: 160px;" Class="mt-0">
+            @foreach (var s in Enum.GetValues<EmploymentStatus>())
+            {
+                <MudSelectItem T="EmploymentStatus?" Value="@((EmploymentStatus?)s)">@s</MudSelectItem>
+            }
+        </MudSelect>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Number</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Email</MudTh>
+        <MudTh>Department</MudTh>
+        <MudTh>Designation</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Hired</MudTh>
+        <MudTh Style="width: 100px;"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Number">@context.EmployeeNumber</MudTd>
+        <MudTd DataLabel="Name">@context.FullName</MudTd>
+        <MudTd DataLabel="Email">@context.Email</MudTd>
+        <MudTd DataLabel="Department">@context.DepartmentName</MudTd>
+        <MudTd DataLabel="Designation">@context.DesignationTitle</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@context.Status</MudChip>
+        </MudTd>
+        <MudTd DataLabel="Hired">@context.HireDate.ToString("yyyy-MM-dd")</MudTd>
+        <MudTd>
+            @if (_canEdit)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenEditorAsync(context.Id)" aria-label="Edit" />
+            }
+            @if (_canDelete)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => DeleteAsync(context)" aria-label="Delete" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>No employees match the current filter.</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="[10, 20, 50]" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<EmployeeListItemDto>? _table;
+    private List<DepartmentDto> _departments = [];
+    private string? _search;
+    private int? _departmentId;
+    private EmploymentStatus? _status;
+    private bool _canCreate;
+    private bool _canEdit;
+    private bool _canDelete;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _canCreate = user.HasClaim(Permissions.ClaimType, Permissions.Employees.Create);
+            _canEdit = user.HasClaim(Permissions.ClaimType, Permissions.Employees.Edit);
+            _canDelete = user.HasClaim(Permissions.ClaimType, Permissions.Employees.Delete);
+        }
+
+        _departments = await Departments.GetAllAsync() ?? [];
+    }
+
+    private async Task<TableData<EmployeeListItemDto>> LoadServerDataAsync(
+        TableState state, CancellationToken token)
+    {
+        var result = await Employees.GetPageAsync(
+            _search, _departmentId, _status, state.Page + 1, state.PageSize);
+        return new TableData<EmployeeListItemDto>
+        {
+            Items = result?.Items ?? [],
+            TotalItems = result?.TotalCount ?? 0,
+        };
+    }
+
+    private Task ReloadAsync() => _table?.ReloadServerData() ?? Task.CompletedTask;
+
+    private Task OnDepartmentChangedAsync(int? value)
+    {
+        _departmentId = value;
+        return ReloadAsync();
+    }
+
+    private Task OnStatusChangedAsync(EmploymentStatus? value)
+    {
+        _status = value;
+        return ReloadAsync();
+    }
+
+    private async Task OpenEditorAsync(int? id)
+    {
+        var parameters = new DialogParameters<EmployeeDialog> { { x => x.EmployeeId, id } };
+        var dialog = await DialogService.ShowAsync<EmployeeDialog>(
+            id is null ? "New employee" : "Edit employee",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add(id is null ? "Employee created." : "Employee updated.", Severity.Success);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(EmployeeListItemDto employee)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Delete employee",
+            $"Delete {employee.FullName} ({employee.EmployeeNumber})? The record is archived, not destroyed.",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            var error = await Employees.DeleteAsync(employee.Id);
+            if (error is null)
+            {
+                Snackbar.Add("Employee deleted.", Severity.Success);
+                await ReloadAsync();
+            }
+            else
+            {
+                Snackbar.Add(error.FullMessage, Severity.Error);
+            }
+        }
+    }
+
+    private static Color StatusColor(EmploymentStatus status) => status switch
+    {
+        EmploymentStatus.Active => Color.Success,
+        EmploymentStatus.Probation => Color.Info,
+        EmploymentStatus.OnLeave => Color.Warning,
+        EmploymentStatus.Suspended => Color.Error,
+        EmploymentStatus.Terminated => Color.Dark,
+        _ => Color.Default,
+    };
+}

@@ -9,4 +9,7 @@ public interface ICurrentUser
     bool IsAuthenticated { get; }
     int? UserId { get; }
     string? UserName { get; }
+
+    /// <summary>True when the principal carries the permission claim (design §9.2).</summary>
+    bool HasPermission(string permission);
 }

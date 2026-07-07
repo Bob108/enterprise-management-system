@@ -1,5 +1,7 @@
 using EMS.BlazorUI;
+using EMS.BlazorUI.ApiClients;
 using EMS.BlazorUI.Auth;
+using EMS.Shared.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
@@ -10,7 +12,16 @@ builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
-builder.Services.AddAuthorizationCore();
+// One client-side policy per permission, mirroring the server's "perm:" prefix.
+// UI gating is UX only — the API is the enforcement point (design §9.2).
+builder.Services.AddAuthorizationCore(options =>
+{
+    foreach (var permission in Permissions.All)
+    {
+        options.AddPolicy($"perm:{permission}",
+            policy => policy.RequireClaim(Permissions.ClaimType, permission));
+    }
+});
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddScoped<AuthTokenStore>();
@@ -25,6 +36,9 @@ builder.Services.AddScoped(sp => new HttpClient(
     BaseAddress = new Uri(builder.HostEnvironment.BaseAddress),
 });
 builder.Services.AddScoped<AuthClient>();
+builder.Services.AddScoped<EmployeesClient>();
+builder.Services.AddScoped<DepartmentsClient>();
+builder.Services.AddScoped<DesignationsClient>();
 
 var host = builder.Build();
 
