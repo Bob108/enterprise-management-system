@@ -1,7 +1,50 @@
-﻿@page "/"
+@page "/"
+@attribute [Authorize]
+@inject HttpClient Http
 
-<PageTitle>Home</PageTitle>
+<PageTitle>EMS — Dashboard</PageTitle>
 
-<h1>Hello, world!</h1>
+<AuthorizeView>
+    <Authorized>
+        <MudText Typo="Typo.h4" GutterBottom="true">Welcome, @context.User.Identity?.Name</MudText>
+    </Authorized>
+</AuthorizeView>
+<MudText Typo="Typo.body1" Class="mb-6">
+    Enterprise Management System — employees, assets, inventory, fleet, procurement,
+    maintenance and leave in one place. Modules light up in the navigation as they are built.
+</MudText>
 
-Welcome to your new app.
+<MudPaper Class="pa-4" Elevation="1" Style="max-width: 480px;">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+        <MudText Typo="Typo.subtitle1">API status:</MudText>
+        @if (_apiHealthy is null)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+        else if (_apiHealthy == true)
+        {
+            <MudChip T="string" Color="Color.Success" Size="Size.Small">Healthy</MudChip>
+        }
+        else
+        {
+            <MudChip T="string" Color="Color.Error" Size="Size.Small">Unreachable</MudChip>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private bool? _apiHealthy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("health");
+            _apiHealthy = response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException)
+        {
+            _apiHealthy = false;
+        }
+    }
+}

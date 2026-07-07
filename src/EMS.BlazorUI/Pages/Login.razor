@@ -1,0 +1,82 @@
+@page "/login"
+@layout EmptyLayout
+@inject AuthClient Auth
+@inject NavigationManager Navigation
+
+<PageTitle>EMS — Sign in</PageTitle>
+
+<MudPaper Elevation="3" Class="pa-8" Style="width: 100%; max-width: 420px;">
+    <MudStack Spacing="4">
+        <div>
+            <MudText Typo="Typo.h5">EMS</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">Enterprise Management System</MudText>
+        </div>
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+        }
+
+        <MudTextField T="string" @bind-Value="_email" Label="Email" InputType="InputType.Email"
+                      Variant="Variant.Outlined" Immediate="true" Disabled="_busy"
+                      OnKeyDown="OnKeyDownAsync" />
+        <MudTextField T="string" @bind-Value="_password" Label="Password" InputType="InputType.Password"
+                      Variant="Variant.Outlined" Immediate="true" Disabled="_busy"
+                      OnKeyDown="OnKeyDownAsync" />
+
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large"
+                   FullWidth="true" OnClick="SubmitAsync" Disabled="_busy">
+            @if (_busy)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Sign in
+        </MudButton>
+
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+            Demo accounts — admin@ems.local / Admin123! · employee@ems.local / Employee123!
+        </MudText>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string? _error;
+    private bool _busy;
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SubmitAsync();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _error = "Enter your email and password.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _error = await Auth.LoginAsync(_email.Trim(), _password);
+        _busy = false;
+
+        if (_error is null)
+        {
+            Navigation.NavigateTo(string.IsNullOrEmpty(ReturnUrl) ? "" : ReturnUrl);
+        }
+    }
+}

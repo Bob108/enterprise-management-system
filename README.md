@@ -30,7 +30,14 @@ dotnet run --project src/EMS.WebAPI
 ```
 
 Then open the printed URL — the API serves the Blazor UI. Health check at `/health`,
-OpenAPI at `/openapi/v1.json` (Development).
+OpenAPI at `/openapi/v1.json` (Development). On first run the database is migrated and
+seeded automatically (LocalDB, Development only).
+
+**Demo accounts** (dev seed): `admin@ems.local` / `Admin123!` (Super Admin) ·
+`employee@ems.local` / `Employee123!` (Employee).
+
+Auth: 15-minute JWTs carrying permission claims + rotating one-time refresh tokens in an
+HttpOnly cookie; replaying a consumed refresh token revokes the whole token family.
 
 ## Documentation
 

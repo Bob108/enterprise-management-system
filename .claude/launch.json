@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ems-webapi",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/EMS.WebAPI", "--no-launch-profile", "--", "--urls", "http://localhost:5199", "--environment", "Development"],
+      "port": 5199
+    }
+  ]
+}

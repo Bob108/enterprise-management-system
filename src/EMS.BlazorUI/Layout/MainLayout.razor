@@ -1,16 +1,45 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
+@inherits LayoutComponentBase
+@inject AuthClient Auth
+@inject NavigationManager Navigation
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="ToggleDrawer" aria-label="Toggle navigation" />
+        <MudText Typo="Typo.h6" Class="ml-2">EMS</MudText>
+        <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudText Typo="Typo.body2" Class="mr-2">@context.User.Identity?.Name</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit"
+                               OnClick="LogoutAsync" aria-label="Sign out" />
+            </Authorized>
+            <NotAuthorized>
+                <MudText Typo="Typo.body2">Enterprise Management System</MudText>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudAppBar>
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />
-    </div>
+    </MudDrawer>
+    <MudMainContent Class="mt-16 pa-6">
+        @Body
+    </MudMainContent>
+</MudLayout>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+@code {
+    private bool _drawerOpen = true;
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("login");
+    }
+}
