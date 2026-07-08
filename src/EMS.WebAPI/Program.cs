@@ -66,9 +66,26 @@ try
     // migration script instead (design §13).
     if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
     {
-        using var scope = app.Services.CreateScope();
-        var initializer = scope.ServiceProvider.GetRequiredService<EmsDbInitializer>();
-        await initializer.InitializeAsync();
+        // LocalDB auto-starts on first connection and occasionally loses that race on a
+        // cold boot ("SQL Server process failed to start") — retry instead of crashing.
+        const int maxAttempts = 4;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var scope = app.Services.CreateScope();
+                var initializer = scope.ServiceProvider.GetRequiredService<EmsDbInitializer>();
+                await initializer.InitializeAsync();
+                break;
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (attempt < maxAttempts)
+            {
+                Log.Warning(ex,
+                    "Database not reachable (attempt {Attempt}/{MaxAttempts}); retrying in 5s",
+                    attempt, maxAttempts);
+                await Task.Delay(TimeSpan.FromSeconds(5));
+            }
+        }
     }
 
     app.UseSerilogRequestLogging();
