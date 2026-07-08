@@ -1,0 +1,131 @@
+@page "/admin/warehouses"
+@attribute [Authorize(Policy = "perm:" + Permissions.Administration.Settings)]
+@inject WarehousesClient Warehouses
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>EMS — Warehouses</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Warehouses</MudText>
+    <MudSpacer />
+    <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+               Variant="Variant.Filled" OnClick="() => OpenEditor(null)">New warehouse</MudButton>
+</MudStack>
+
+<MudTable T="WarehouseDto" Items="_items" Dense="true" Hover="true" Elevation="1" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Location</MudTh>
+        <MudTh>Stocked items</MudTh>
+        <MudTh Style="width: 100px;"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Code">@context.Code</MudTd>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Location">@(context.Location ?? "—")</MudTd>
+        <MudTd DataLabel="Stocked items">@context.StockedItemCount</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                           OnClick="() => OpenEditor(context)" aria-label="Edit" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="() => DeleteAsync(context)" aria-label="Delete" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudDialog @bind-Visible="_editorOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingId is null ? "New warehouse" : "Edit warehouse")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+        }
+        <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined"
+                      Required="true" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_code" Label="Code" Variant="Variant.Outlined"
+                      Required="true" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_location" Label="Location"
+                      Variant="Variant.Outlined" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editorOpen = false">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+    private List<WarehouseDto> _items = [];
+    private bool _loading = true;
+    private bool _editorOpen;
+    private bool _saving;
+    private int? _editingId;
+    private string _name = string.Empty;
+    private string _code = string.Empty;
+    private string? _location;
+    private ApiError? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _items = await Warehouses.GetAllAsync() ?? [];
+        _loading = false;
+    }
+
+    private void OpenEditor(WarehouseDto? item)
+    {
+        _editingId = item?.Id;
+        _name = item?.Name ?? string.Empty;
+        _code = item?.Code ?? string.Empty;
+        _location = item?.Location;
+        _error = null;
+        _editorOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var request = new SaveWarehouseRequest(_name, _code, _location);
+        _error = _editingId is { } id
+            ? await Warehouses.UpdateAsync(id, request)
+            : await Warehouses.CreateAsync(request);
+
+        _saving = false;
+
+        if (_error is null)
+        {
+            _editorOpen = false;
+            Snackbar.Add(_editingId is null ? "Warehouse created." : "Warehouse updated.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(WarehouseDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Delete warehouse", $"Delete {item.Name} ({item.Code})?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            var error = await Warehouses.DeleteAsync(item.Id);
+            if (error is null)
+            {
+                Snackbar.Add("Warehouse deleted.", Severity.Success);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(error.FullMessage, Severity.Error);
+            }
+        }
+    }
+}

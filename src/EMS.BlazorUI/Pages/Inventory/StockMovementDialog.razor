@@ -1,0 +1,106 @@
+@inject InventoryClient Inventory
+@inject WarehousesClient Warehouses
+
+<MudDialog>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+        }
+
+        <MudText Typo="Typo.subtitle2" Class="mb-3">@ItemName</MudText>
+
+        <MudSelect T="int" @bind-Value="_warehouseId" Label="Warehouse"
+                   Variant="Variant.Outlined" Class="mb-3">
+            @foreach (var w in _warehouses)
+            {
+                <MudSelectItem T="int" Value="@w.Id">@w.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        @if (Mode == InventoryPage.MovementMode.Adjust)
+        {
+            <MudNumericField T="int" @bind-Value="_quantityChange" Label="@($"Change (± {Unit})")"
+                             Variant="Variant.Outlined" Class="mb-3"
+                             HelperText="Positive adds stock, negative removes it (count correction)." />
+            <MudTextField T="string" @bind-Value="_reason" Label="Reason (required)"
+                          Variant="Variant.Outlined" Lines="2" />
+        }
+        else
+        {
+            <MudNumericField T="int" @bind-Value="_quantity" Label="@($"Quantity ({Unit})")"
+                             Variant="Variant.Outlined" Min="1" Class="mb-3" />
+            <MudTextField T="string" @bind-Value="_reason" Label="Reason"
+                          Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField T="string" @bind-Value="_reference" Label="Reference (PO, ticket…)"
+                          Variant="Variant.Outlined" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="@ButtonColor" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_busy">
+            @ButtonText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<WarehouseDto> _warehouses = [];
+    private int _warehouseId;
+    private int _quantity = 1;
+    private int _quantityChange;
+    private string? _reason;
+    private string? _reference;
+    private bool _busy;
+    private ApiError? _error;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public int ItemId { get; set; }
+    [Parameter] public string ItemName { get; set; } = string.Empty;
+    [Parameter] public string Unit { get; set; } = string.Empty;
+    [Parameter] public InventoryPage.MovementMode Mode { get; set; }
+
+    private string ButtonText => Mode switch
+    {
+        InventoryPage.MovementMode.StockIn => "Stock in",
+        InventoryPage.MovementMode.StockOut => "Stock out",
+        _ => "Apply adjustment",
+    };
+
+    private Color ButtonColor => Mode switch
+    {
+        InventoryPage.MovementMode.StockOut => Color.Warning,
+        _ => Color.Primary,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = await Warehouses.GetAllAsync() ?? [];
+        _warehouseId = _warehouses.FirstOrDefault()?.Id ?? 0;
+    }
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        _error = Mode switch
+        {
+            InventoryPage.MovementMode.StockIn => await Inventory.StockInAsync(
+                ItemId, new StockMovementRequest(_warehouseId, _quantity, _reason, _reference)),
+            InventoryPage.MovementMode.StockOut => await Inventory.StockOutAsync(
+                ItemId, new StockMovementRequest(_warehouseId, _quantity, _reason, _reference)),
+            _ => await Inventory.AdjustAsync(
+                ItemId, new StockAdjustmentRequest(_warehouseId, _quantityChange, _reason)),
+        };
+
+        _busy = false;
+
+        if (_error is null)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+}

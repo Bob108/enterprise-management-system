@@ -1,0 +1,67 @@
+@inject InventoryClient Inventory
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.subtitle2" Class="mb-3">@ItemName</MudText>
+
+        @if (_transactions is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_transactions.Count == 0)
+        {
+            <MudText Typo="Typo.body2">No movements recorded yet.</MudText>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true">
+                <thead>
+                    <tr>
+                        <th>When (UTC)</th>
+                        <th>Type</th>
+                        <th>Warehouse</th>
+                        <th style="text-align: right;">Change</th>
+                        <th>Reason</th>
+                        <th>Reference</th>
+                        <th>By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _transactions)
+                    {
+                        <tr>
+                            <td>@t.PerformedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@t.Type</td>
+                            <td>@t.WarehouseName</td>
+                            <td style="text-align: right;">
+                                <MudText Typo="Typo.body2"
+                                         Color="@(t.QuantityChange >= 0 ? Color.Success : Color.Error)">
+                                    @(t.QuantityChange >= 0 ? "+" : "")@t.QuantityChange
+                                </MudText>
+                            </td>
+                            <td>@(t.Reason ?? "—")</td>
+                            <td>@(t.Reference ?? "—")</td>
+                            <td>@(t.PerformedBy ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<InventoryTransactionDto>? _transactions;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public int ItemId { get; set; }
+    [Parameter] public string ItemName { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+        => _transactions = await Inventory.GetTransactionsAsync(ItemId);
+}

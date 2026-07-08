@@ -55,6 +55,8 @@ public static class DependencyInjection
         services.AddScoped<IAssetCategoryRepository, AssetCategoryRepository>();
         services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<IDepreciationRepository, DepreciationRepository>();
+        services.AddScoped<IInventoryRepository, InventoryRepository>();
+        services.AddScoped<IWarehouseRepository, WarehouseRepository>();
 
         services.AddSingleton<IQrCodeGenerator, QrCodeService>();
         services.AddHostedService<DepreciationCatchUpService>();

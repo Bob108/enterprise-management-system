@@ -26,6 +26,10 @@ public class EmsDbContext(DbContextOptions<EmsDbContext> options)
     public DbSet<AssetTransfer> AssetTransfers => Set<AssetTransfer>();
     public DbSet<AssetDisposal> AssetDisposals => Set<AssetDisposal>();
     public DbSet<DepreciationEntry> DepreciationEntries => Set<DepreciationEntry>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+    public DbSet<StockLevel> StockLevels => Set<StockLevel>();
+    public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

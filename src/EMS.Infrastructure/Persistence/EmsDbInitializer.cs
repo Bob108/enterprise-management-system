@@ -78,6 +78,7 @@ public sealed class EmsDbInitializer(
         await SeedUsersAsync();
         await SeedHrAsync(cancellationToken);
         await SeedAssetsAsync(cancellationToken);
+        await SeedInventoryAsync(cancellationToken);
         logger.LogInformation("Database migrated and seeded");
     }
 
@@ -288,6 +289,83 @@ public sealed class EmsDbInitializer(
         assets[18].Dispose(DisposalMethod.Sold, 40_000m, assets[18].PurchaseCost, "Replaced by split units", today.AddMonths(-2));
         assets[11].Dispose(DisposalMethod.Donated, null, assets[11].PurchaseCost, "Donated to community center", today.AddMonths(-1));
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SeedInventoryAsync(CancellationToken cancellationToken)
+    {
+        if (await context.Warehouses.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        var main = new Warehouse { Name = "Main Store", Code = "MAIN", Location = "HQ, ground floor" };
+        var depot = new Warehouse { Name = "Logistics Depot", Code = "DEPOT", Location = "Industrial Area" };
+        context.Warehouses.AddRange(main, depot);
+
+        // (Name, Category, Unit, main qty, main min, depot qty, depot min)
+        // Quantities deliberately include below-minimum rows for the low-stock demo.
+        (string Name, string Cat, string Unit, int MainQty, int MainMin, int DepotQty, int DepotMin)[] items =
+        [
+            ("HP 26A Printer Toner", "Printer Supplies", "pcs", 4, 6, 0, 0),
+            ("A4 Copy Paper", "Stationery", "ream", 120, 40, 30, 20),
+            ("USB-C Charger 65W", "IT Consumables", "pcs", 18, 10, 0, 0),
+            ("HDMI Cable 2m", "IT Consumables", "pcs", 25, 8, 0, 0),
+            ("Wireless Keyboard + Mouse Set", "IT Consumables", "pcs", 7, 5, 0, 0),
+            ("Safety Gloves", "Safety Gear", "pair", 15, 20, 40, 25),
+            ("Packing Tape 48mm", "Packaging", "roll", 0, 0, 65, 30),
+            ("Stretch Wrap Film", "Packaging", "roll", 0, 0, 12, 15),
+            ("Diesel (Generator)", "Fuel", "litre", 0, 0, 400, 200),
+            ("Whiteboard Markers", "Stationery", "box", 9, 4, 0, 0),
+        ];
+
+        var now = DateTime.UtcNow;
+        var number = 1;
+        foreach (var spec in items)
+        {
+            var item = new InventoryItem
+            {
+                ItemCode = $"INV-{number++:D4}",
+                Name = spec.Name,
+                Category = spec.Cat,
+                Unit = spec.Unit,
+            };
+            context.InventoryItems.Add(item);
+
+            SeedStock(item, main, spec.MainQty, spec.MainMin);
+            SeedStock(item, depot, spec.DepotQty, spec.DepotMin);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+
+        void SeedStock(InventoryItem item, Warehouse warehouse, int quantity, int minimum)
+        {
+            if (quantity == 0 && minimum == 0)
+            {
+                return;
+            }
+
+            item.StockLevels.Add(new StockLevel
+            {
+                Warehouse = warehouse,
+                Quantity = quantity,
+                MinimumQuantity = minimum,
+            });
+
+            // Ledger stays consistent with the balance: one opening StockIn per level.
+            if (quantity > 0)
+            {
+                context.InventoryTransactions.Add(new InventoryTransaction
+                {
+                    Item = item,
+                    Warehouse = warehouse,
+                    Type = InventoryTransactionType.StockIn,
+                    QuantityChange = quantity,
+                    Reason = "Opening stock",
+                    PerformedAtUtc = now,
+                    PerformedBy = "seed",
+                });
+            }
+        }
     }
 
     private async Task EnsureUserAsync(string email, string password, string displayName, string role)

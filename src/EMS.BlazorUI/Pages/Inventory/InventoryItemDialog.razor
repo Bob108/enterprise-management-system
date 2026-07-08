@@ -1,0 +1,150 @@
+@inject InventoryClient Inventory
+@inject WarehousesClient Warehouses
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_name" Label="Name"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField T="string" @bind-Value="_category" Label="Category"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField T="string" @bind-Value="_unit" Label="Unit (pcs, box, litre…)"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" @bind-Value="_description" Label="Description"
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle1" Class="mt-2">Minimum stock per warehouse</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        The low-stock alert fires when a warehouse balance drops below its minimum.
+                    </MudText>
+                </MudItem>
+                @foreach (var row in _minimums)
+                {
+                    <MudItem xs="6" sm="4">
+                        <MudField Label="@row.WarehouseName" Variant="Variant.Text">
+                            On hand: @row.Quantity
+                        </MudField>
+                    </MudItem>
+                    <MudItem xs="6" sm="8">
+                        <MudNumericField T="int" @bind-Value="row.MinimumQuantity" Label="Minimum"
+                                         Variant="Variant.Outlined" Min="0" Margin="Margin.Dense" />
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private sealed class MinimumRow
+    {
+        public int WarehouseId { get; init; }
+        public string WarehouseName { get; init; } = string.Empty;
+        public int Quantity { get; init; }
+        public int MinimumQuantity { get; set; }
+    }
+
+    private readonly List<MinimumRow> _minimums = [];
+    private bool _loading = true;
+    private bool _saving;
+    private ApiError? _error;
+    private string _name = string.Empty;
+    private string? _category;
+    private string _unit = "pcs";
+    private string? _description;
+    private string _rowVersion = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public int? ItemId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var warehouses = await Warehouses.GetAllAsync() ?? [];
+        InventoryItemDetailDto? detail = null;
+
+        if (ItemId is { } id)
+        {
+            detail = await Inventory.GetByIdAsync(id);
+            if (detail is not null)
+            {
+                _name = detail.Name;
+                _category = detail.Category;
+                _unit = detail.Unit;
+                _description = detail.Description;
+                _rowVersion = detail.RowVersion;
+            }
+        }
+
+        foreach (var warehouse in warehouses)
+        {
+            var level = detail?.StockLevels.FirstOrDefault(s => s.WarehouseId == warehouse.Id);
+            _minimums.Add(new MinimumRow
+            {
+                WarehouseId = warehouse.Id,
+                WarehouseName = warehouse.Name,
+                Quantity = level?.Quantity ?? 0,
+                MinimumQuantity = level?.MinimumQuantity ?? 0,
+            });
+        }
+
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_unit))
+        {
+            _error = new ApiError("Name and unit are required.", null);
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        var minimums = _minimums
+            .Select(m => new WarehouseMinimum(m.WarehouseId, m.MinimumQuantity))
+            .ToList();
+
+        _error = ItemId is { } id
+            ? await Inventory.UpdateAsync(id, new UpdateInventoryItemRequest(
+                _name, _category, _unit, _description, minimums, _rowVersion))
+            : await Inventory.CreateAsync(new CreateInventoryItemRequest(
+                _name, _category, _unit, _description, minimums));
+
+        _saving = false;
+
+        if (_error is null)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+}

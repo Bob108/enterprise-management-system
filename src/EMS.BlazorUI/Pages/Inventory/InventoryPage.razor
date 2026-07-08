@@ -1,0 +1,221 @@
+@page "/inventory"
+@attribute [Authorize(Policy = "perm:" + Permissions.Inventory.View)]
+@inject InventoryClient Inventory
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>EMS — Inventory</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Inventory</MudText>
+    <MudSpacer />
+    @if (_canAdjust)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   Variant="Variant.Filled" OnClick="() => OpenItemEditorAsync(null)">
+            New item
+        </MudButton>
+    }
+</MudStack>
+
+<MudTable T="InventoryItemListDto" @ref="_table" ServerData="LoadServerDataAsync"
+          Dense="true" Hover="true" Elevation="1">
+    <ToolBarContent>
+        <MudTextField T="string" @bind-Value="_search" Placeholder="Search code, name or category"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" DebounceInterval="400" OnDebounceIntervalElapsed="ReloadAsync"
+                      Clearable="true" Class="mr-6 mt-0" />
+        <MudSwitch T="bool" Value="_lowStockOnly" ValueChanged="OnLowStockChangedAsync"
+                   Color="Color.Warning" Label="Below minimum only" Class="mt-0" />
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Category</MudTh>
+        <MudTh>Unit</MudTh>
+        <MudTh Style="text-align: right;">On hand</MudTh>
+        <MudTh Style="text-align: right;">Minimum</MudTh>
+        <MudTh>Stock health</MudTh>
+        <MudTh Style="width: 200px;"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Code">@context.ItemCode</MudTd>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Category">@(context.Category ?? "—")</MudTd>
+        <MudTd DataLabel="Unit">@context.Unit</MudTd>
+        <MudTd DataLabel="On hand" Style="text-align: right;">@context.TotalOnHand.ToString("N0")</MudTd>
+        <MudTd DataLabel="Minimum" Style="text-align: right;">@context.TotalMinimum.ToString("N0")</MudTd>
+        <MudTd DataLabel="Stock health">
+            @if (context.IsBelowMinimum)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">Low stock</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">OK</MudChip>
+            }
+        </MudTd>
+        <MudTd>
+            @if (_canStockIn)
+            {
+                <MudTooltip Text="Stock in">
+                    <MudIconButton Icon="@Icons.Material.Filled.AddBox" Size="Size.Small" Color="Color.Success"
+                                   OnClick="() => OpenMovementAsync(context, MovementMode.StockIn)"
+                                   aria-label="Stock in" />
+                </MudTooltip>
+            }
+            @if (_canStockOut)
+            {
+                <MudTooltip Text="Stock out">
+                    <MudIconButton Icon="@Icons.Material.Filled.Outbox" Size="Size.Small" Color="Color.Warning"
+                                   OnClick="() => OpenMovementAsync(context, MovementMode.StockOut)"
+                                   aria-label="Stock out" />
+                </MudTooltip>
+            }
+            @if (_canAdjust)
+            {
+                <MudTooltip Text="Adjust (count correction)">
+                    <MudIconButton Icon="@Icons.Material.Filled.Tune" Size="Size.Small"
+                                   OnClick="() => OpenMovementAsync(context, MovementMode.Adjust)"
+                                   aria-label="Adjust stock" />
+                </MudTooltip>
+            }
+            <MudTooltip Text="Movement history">
+                <MudIconButton Icon="@Icons.Material.Filled.History" Size="Size.Small"
+                               OnClick="() => OpenHistoryAsync(context)" aria-label="History" />
+            </MudTooltip>
+            @if (_canAdjust)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="() => OpenItemEditorAsync(context.Id)" aria-label="Edit" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="() => DeleteAsync(context)" aria-label="Delete" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>No inventory items match the current filter.</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="[10, 20, 50]" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    public enum MovementMode { StockIn, StockOut, Adjust }
+
+    private MudTable<InventoryItemListDto>? _table;
+    private string? _search;
+    private bool _lowStockOnly;
+    private bool _canStockIn;
+    private bool _canStockOut;
+    private bool _canAdjust;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _canStockIn = user.HasClaim(Permissions.ClaimType, Permissions.Inventory.StockIn);
+            _canStockOut = user.HasClaim(Permissions.ClaimType, Permissions.Inventory.StockOut);
+            _canAdjust = user.HasClaim(Permissions.ClaimType, Permissions.Inventory.Adjust);
+        }
+    }
+
+    private async Task<TableData<InventoryItemListDto>> LoadServerDataAsync(
+        TableState state, CancellationToken token)
+    {
+        var result = await Inventory.GetPageAsync(_search, _lowStockOnly, state.Page + 1, state.PageSize);
+        return new TableData<InventoryItemListDto>
+        {
+            Items = result?.Items ?? [],
+            TotalItems = result?.TotalCount ?? 0,
+        };
+    }
+
+    private Task ReloadAsync() => _table?.ReloadServerData() ?? Task.CompletedTask;
+
+    private Task OnLowStockChangedAsync(bool value)
+    {
+        _lowStockOnly = value;
+        return ReloadAsync();
+    }
+
+    private async Task OpenItemEditorAsync(int? id)
+    {
+        var parameters = new DialogParameters<InventoryItemDialog> { { x => x.ItemId, id } };
+        var dialog = await DialogService.ShowAsync<InventoryItemDialog>(
+            id is null ? "New inventory item" : "Edit inventory item",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add(id is null ? "Item created." : "Item updated.", Severity.Success);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenMovementAsync(InventoryItemListDto item, MovementMode mode)
+    {
+        var parameters = new DialogParameters<StockMovementDialog>
+        {
+            { x => x.ItemId, item.Id },
+            { x => x.ItemName, $"{item.ItemCode} — {item.Name}" },
+            { x => x.Unit, item.Unit },
+            { x => x.Mode, mode },
+        };
+        var title = mode switch
+        {
+            MovementMode.StockIn => "Stock in",
+            MovementMode.StockOut => "Stock out",
+            _ => "Adjust stock",
+        };
+        var dialog = await DialogService.ShowAsync<StockMovementDialog>(
+            title, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add("Movement recorded.", Severity.Success);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OpenHistoryAsync(InventoryItemListDto item)
+    {
+        var parameters = new DialogParameters<ItemHistoryDialog>
+        {
+            { x => x.ItemId, item.Id },
+            { x => x.ItemName, $"{item.ItemCode} — {item.Name}" },
+        };
+        await DialogService.ShowAsync<ItemHistoryDialog>(
+            "Movement history", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+    }
+
+    private async Task DeleteAsync(InventoryItemListDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Delete item", $"Delete {item.Name} ({item.ItemCode})?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            var error = await Inventory.DeleteAsync(item.Id);
+            if (error is null)
+            {
+                Snackbar.Add("Item deleted.", Severity.Success);
+                await ReloadAsync();
+            }
+            else
+            {
+                Snackbar.Add(error.FullMessage, Severity.Error);
+            }
+        }
+    }
+}
