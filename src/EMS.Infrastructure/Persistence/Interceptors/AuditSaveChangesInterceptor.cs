@@ -23,8 +23,12 @@ public sealed class AuditSaveChangesInterceptor(ICurrentUser currentUser, IDateT
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
-    /// <summary>Auth plumbing and the audit table itself are not audited.</summary>
-    private static readonly Type[] ExcludedEntityTypes = [typeof(AuditLog), typeof(RefreshToken)];
+    /// <summary>
+    /// Not audited: the audit table itself, auth plumbing, and the depreciation ledger
+    /// (immutable, self-documenting, and bulk-posted — auditing it would only add noise).
+    /// </summary>
+    private static readonly Type[] ExcludedEntityTypes =
+        [typeof(AuditLog), typeof(RefreshToken), typeof(DepreciationEntry)];
 
     /// <summary>Never captured in snapshots.</summary>
     private static readonly string[] ExcludedProperties =

@@ -18,6 +18,8 @@ public interface IEmployeeRepository
     /// <summary>Tracked, with department/designation/contacts loaded.</summary>
     Task<Employee?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
 
+    Task<bool> ExistsAsync(int id, CancellationToken cancellationToken = default);
+
     Task<bool> EmailTakenAsync(string email, int? excludeId, CancellationToken cancellationToken = default);
 
     /// <summary>Next number in the EMP-#### sequence (unique index is the race backstop).</summary>

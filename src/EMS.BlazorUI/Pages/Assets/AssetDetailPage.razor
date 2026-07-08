@@ -1,0 +1,394 @@
+@page "/assets/{Id:int}"
+@attribute [Authorize(Policy = "perm:" + Permissions.Assets.View)]
+@inject AssetsClient AssetsApi
+@inject DepartmentsClient Departments
+@inject EmployeesClient Employees
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>EMS — Asset detail</PageTitle>
+
+@if (_asset is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Navigation.NavigateTo("/assets"))"
+                       aria-label="Back to assets" />
+        <MudText Typo="Typo.h5">@_asset.AssetCode — @_asset.Name</MudText>
+        <MudChip T="string" Size="Size.Small" Color="@StatusStyles.For(_asset.Status)" Class="ml-2">
+            @_asset.Status
+        </MudChip>
+        <MudSpacer />
+        @if (_canEdit && _asset.Status != AssetStatus.Retired)
+        {
+            <MudButton StartIcon="@Icons.Material.Filled.Edit" Variant="Variant.Outlined"
+                       OnClick="OpenEditorAsync">Edit</MudButton>
+        }
+    </MudStack>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudGrid Spacing="2">
+                    <MudItem xs="6" sm="4"><Field Label="Category" Value="@_asset.CategoryName" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Department" Value="@_asset.DepartmentName" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Supplier" Value="@(_asset.SupplierName ?? "—")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Serial number" Value="@(_asset.SerialNumber ?? "—")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Model" Value="@(_asset.Model ?? "—")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Assignee" Value="@(_asset.AssigneeName ?? "—")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Purchased" Value="@_asset.PurchaseDate.ToString("yyyy-MM-dd")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Purchase cost" Value="@_asset.PurchaseCost.ToString("N2")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Book value" Value="@_asset.BookValue.ToString("N2")" /></MudItem>
+                    <MudItem xs="6" sm="4"><Field Label="Warranty until" Value="@(_asset.WarrantyExpiryDate?.ToString("yyyy-MM-dd") ?? "—")" /></MudItem>
+                    <MudItem xs="12"><Field Label="Notes" Value="@(_asset.Notes ?? "—")" /></MudItem>
+                </MudGrid>
+
+                @if (_asset.Disposal is { } disposal)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">
+                        Retired on @disposal.DisposedOn.ToString("yyyy-MM-dd") (@disposal.Method).
+                        Proceeds: @((disposal.Proceeds ?? 0).ToString("N2")),
+                        gain/loss: @disposal.GainLoss.ToString("N2").
+                        @if (disposal.Reason is not null)
+                        {
+                            <text> Reason: @disposal.Reason</text>
+                        }
+                    </MudAlert>
+                }
+
+                <MudStack Row="true" Spacing="2" Class="mt-4" Wrap="Wrap.Wrap">
+                    @if (_asset.Status == AssetStatus.Available && _canAssign)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.PersonAdd"
+                                   OnClick="() => _assignOpen = true">Assign</MudButton>
+                    }
+                    @if (_asset.Status == AssetStatus.Assigned && _canAssign)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.AssignmentReturn"
+                                   OnClick="() => _returnOpen = true">Return</MudButton>
+                    }
+                    @if (_asset.Status is AssetStatus.Available or AssetStatus.Assigned or AssetStatus.UnderRepair && _canTransfer)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.SwapHoriz"
+                                   OnClick="() => _transferOpen = true">Transfer</MudButton>
+                    }
+                    @if (_asset.Status is AssetStatus.Available or AssetStatus.Assigned && _canEdit)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Filled.Build"
+                                   OnClick="SendToRepairAsync">Send to repair</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Error"
+                                   StartIcon="@Icons.Material.Filled.ReportProblem"
+                                   OnClick="ReportLostAsync">Report lost</MudButton>
+                    }
+                    @if (_asset.Status == AssetStatus.UnderRepair && _canEdit)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Success"
+                                   StartIcon="@Icons.Material.Filled.Done"
+                                   OnClick="MarkRepairedAsync">Mark repaired</MudButton>
+                    }
+                    @if (_asset.Status == AssetStatus.Lost && _canEdit)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Success"
+                                   StartIcon="@Icons.Material.Filled.Restore"
+                                   OnClick="RecoverAsync">Recover</MudButton>
+                    }
+                    @if (_asset.Status is AssetStatus.Available or AssetStatus.Lost && _canDispose)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Dark"
+                                   StartIcon="@Icons.Material.Filled.DeleteForever"
+                                   OnClick="() => _disposeOpen = true">Retire / dispose</MudButton>
+                    }
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="1">
+                <MudTabs Elevation="0" ApplyEffectsToContainer="true">
+                    <MudTabPanel Text="@($"Assignments ({_asset.Assignments.Count})")">
+                        @if (_asset.Assignments.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2">No assignment history.</MudText>
+                        }
+                        else
+                        {
+                            <MudSimpleTable Dense="true">
+                                <thead>
+                                    <tr><th>Employee</th><th>Assigned</th><th>Returned</th><th>Condition out</th><th>Condition in</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var a in _asset.Assignments)
+                                    {
+                                        <tr>
+                                            <td>@a.EmployeeName</td>
+                                            <td>@a.AssignedOn.ToString("yyyy-MM-dd")</td>
+                                            <td>@(a.ReturnedOn?.ToString("yyyy-MM-dd") ?? "open")</td>
+                                            <td>@(a.ConditionOut ?? "—")</td>
+                                            <td>@(a.ConditionIn ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+                    </MudTabPanel>
+                    <MudTabPanel Text="@($"Transfers ({_asset.Transfers.Count})")">
+                        @if (_asset.Transfers.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2">No transfer history.</MudText>
+                        }
+                        else
+                        {
+                            <MudSimpleTable Dense="true">
+                                <thead>
+                                    <tr><th>Date</th><th>From</th><th>To</th><th>Reason</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var t in _asset.Transfers)
+                                    {
+                                        <tr>
+                                            <td>@t.TransferredOn.ToString("yyyy-MM-dd")</td>
+                                            <td>@t.FromDepartment</td>
+                                            <td>@t.ToDepartment</td>
+                                            <td>@(t.Reason ?? "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+                    </MudTabPanel>
+                </MudTabs>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Asset label</MudText>
+                @if (_qrDataUrl is not null)
+                {
+                    <MudImage Src="@_qrDataUrl" Alt="@($"QR code for {_asset.AssetCode}")" Width="180" Height="180" />
+                }
+                else
+                {
+                    <MudProgressCircular Indeterminate="true" />
+                }
+                <MudText Typo="Typo.h6" Class="mt-2">@_asset.AssetCode</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Scan to identify this asset</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudDialog @bind-Visible="_assignOpen" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Assign @_asset.AssetCode</MudText></TitleContent>
+        <DialogContent>
+            <MudAutocomplete T="EmployeeListItemDto" @bind-Value="_assignEmployee" Label="Employee"
+                             SearchFunc="SearchEmployeesAsync" ToStringFunc="@(e => e?.FullName ?? string.Empty)"
+                             Variant="Variant.Outlined" MinCharacters="1" Clearable="true" Class="mb-3" />
+            <MudTextField T="string" @bind-Value="_actionNotes" Label="Condition notes"
+                          Variant="Variant.Outlined" Lines="2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _assignOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="AssignAsync">Assign</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog @bind-Visible="_returnOpen" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Return @_asset.AssetCode</MudText></TitleContent>
+        <DialogContent>
+            <MudTextField T="string" @bind-Value="_actionNotes" Label="Condition notes"
+                          Variant="Variant.Outlined" Lines="2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _returnOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ReturnAsync">Return</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog @bind-Visible="_transferOpen" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Transfer @_asset.AssetCode</MudText></TitleContent>
+        <DialogContent>
+            <MudSelect T="int" @bind-Value="_transferDepartmentId" Label="Target department"
+                       Variant="Variant.Outlined" Class="mb-3">
+                @foreach (var d in _departments.Where(d => d.Id != _asset.DepartmentId))
+                {
+                    <MudSelectItem T="int" Value="@d.Id">@d.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField T="string" @bind-Value="_actionNotes" Label="Reason"
+                          Variant="Variant.Outlined" Lines="2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _transferOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="TransferAsync">Transfer</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog @bind-Visible="_disposeOpen" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Retire @_asset.AssetCode</MudText></TitleContent>
+        <DialogContent>
+            <MudSelect T="DisposalMethod" @bind-Value="_disposalMethod" Label="Method"
+                       Variant="Variant.Outlined" Class="mb-3">
+                @foreach (var m in Enum.GetValues<DisposalMethod>())
+                {
+                    <MudSelectItem T="DisposalMethod" Value="@m">@m</MudSelectItem>
+                }
+            </MudSelect>
+            <MudNumericField T="decimal?" @bind-Value="_disposalProceeds" Label="Proceeds (if sold)"
+                             Variant="Variant.Outlined" Min="0" Class="mb-3" />
+            <MudTextField T="string" @bind-Value="_actionNotes" Label="Reason"
+                          Variant="Variant.Outlined" Lines="2" />
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                Retiring is permanent — the asset cannot be reactivated.
+            </MudAlert>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _disposeOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="DisposeAsync">Retire asset</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+    private AssetDetailDto? _asset;
+    private List<DepartmentDto> _departments = [];
+    private string? _qrDataUrl;
+    private bool _canEdit;
+    private bool _canAssign;
+    private bool _canTransfer;
+    private bool _canDispose;
+
+    private bool _assignOpen;
+    private bool _returnOpen;
+    private bool _transferOpen;
+    private bool _disposeOpen;
+    private EmployeeListItemDto? _assignEmployee;
+    private int _transferDepartmentId;
+    private string? _actionNotes;
+    private DisposalMethod _disposalMethod = DisposalMethod.Scrapped;
+    private decimal? _disposalProceeds;
+
+    [Parameter]
+    public int Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _canEdit = user.HasClaim(Permissions.ClaimType, Permissions.Assets.Edit);
+            _canAssign = user.HasClaim(Permissions.ClaimType, Permissions.Assets.Assign);
+            _canTransfer = user.HasClaim(Permissions.ClaimType, Permissions.Assets.Transfer);
+            _canDispose = user.HasClaim(Permissions.ClaimType, Permissions.Assets.Dispose);
+        }
+
+        _departments = await Departments.GetAllAsync() ?? [];
+        await LoadAsync();
+        _qrDataUrl = await AssetsApi.GetQrCodeDataUrlAsync(Id);
+    }
+
+    private async Task LoadAsync()
+    {
+        _asset = await AssetsApi.GetByIdAsync(Id);
+        _actionNotes = null;
+        _assignEmployee = null;
+        _disposalProceeds = null;
+    }
+
+    private async Task<IEnumerable<EmployeeListItemDto>> SearchEmployeesAsync(
+        string value, CancellationToken token)
+    {
+        var page = await Employees.GetPageAsync(value, null, null, 1, 10);
+        return page?.Items ?? [];
+    }
+
+    private async Task OpenEditorAsync()
+    {
+        var parameters = new DialogParameters<AssetDialog> { { x => x.AssetId, (int?)Id } };
+        var dialog = await DialogService.ShowAsync<AssetDialog>(
+            "Edit asset", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add("Asset updated.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private Task SendToRepairAsync() => RunActionAsync(AssetsApi.MarkUnderRepairAsync, "Marked under repair.");
+
+    private Task ReportLostAsync() => RunActionAsync(AssetsApi.ReportLostAsync, "Reported lost.");
+
+    private Task MarkRepairedAsync() => RunActionAsync(AssetsApi.MarkRepairedAsync, "Marked repaired.");
+
+    private Task RecoverAsync() => RunActionAsync(AssetsApi.RecoverAsync, "Asset recovered.");
+
+    private async Task RunActionAsync(Func<int, Task<ApiError?>> action, string successMessage)
+    {
+        var error = await action(Id);
+        if (error is null)
+        {
+            Snackbar.Add(successMessage, Severity.Success);
+            await LoadAsync();
+        }
+        else
+        {
+            Snackbar.Add(error.FullMessage, Severity.Error);
+        }
+    }
+
+    private async Task AssignAsync()
+    {
+        if (_assignEmployee is null)
+        {
+            Snackbar.Add("Select an employee.", Severity.Warning);
+            return;
+        }
+
+        _assignOpen = false;
+        var employeeId = _assignEmployee.Id;
+        var notes = _actionNotes;
+        await RunActionAsync(id => AssetsApi.AssignAsync(id, new AssignAssetRequest(employeeId, notes)),
+            "Asset assigned.");
+    }
+
+    private async Task ReturnAsync()
+    {
+        _returnOpen = false;
+        var notes = _actionNotes;
+        await RunActionAsync(id => AssetsApi.ReturnAsync(id, new ReturnAssetRequest(notes)), "Asset returned.");
+    }
+
+    private async Task TransferAsync()
+    {
+        if (_transferDepartmentId == 0)
+        {
+            Snackbar.Add("Select a target department.", Severity.Warning);
+            return;
+        }
+
+        _transferOpen = false;
+        var target = _transferDepartmentId;
+        var reason = _actionNotes;
+        await RunActionAsync(id => AssetsApi.TransferAsync(id, new TransferAssetRequest(target, reason)),
+            "Asset transferred.");
+    }
+
+    private async Task DisposeAsync()
+    {
+        _disposeOpen = false;
+        var request = new DisposeAssetRequest(_disposalMethod, _disposalProceeds, _actionNotes);
+        await RunActionAsync(id => AssetsApi.DisposeAsync(id, request), "Asset retired.");
+    }
+}

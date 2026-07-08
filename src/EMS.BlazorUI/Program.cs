@@ -39,6 +39,9 @@ builder.Services.AddScoped<AuthClient>();
 builder.Services.AddScoped<EmployeesClient>();
 builder.Services.AddScoped<DepartmentsClient>();
 builder.Services.AddScoped<DesignationsClient>();
+builder.Services.AddScoped<AssetsClient>();
+builder.Services.AddScoped<AssetCategoriesClient>();
+builder.Services.AddScoped<SuppliersClient>();
 
 var host = builder.Build();
 

@@ -11,6 +11,9 @@ public interface IDepartmentRepository
 
     Task<bool> ExistsAsync(int id, CancellationToken cancellationToken = default);
 
+    /// <summary>Id → name lookup for rendering references (e.g. transfer history).</summary>
+    Task<IReadOnlyDictionary<int, string>> GetNamesAsync(CancellationToken cancellationToken = default);
+
     Task<bool> NameOrCodeTakenAsync(
         string name, string code, int? excludeId, CancellationToken cancellationToken = default);
 

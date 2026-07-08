@@ -24,6 +24,12 @@ public sealed class DepartmentRepository(EmsDbContext context) : IDepartmentRepo
     public Task<bool> ExistsAsync(int id, CancellationToken cancellationToken = default)
         => context.Set<Department>().AnyAsync(d => d.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyDictionary<int, string>> GetNamesAsync(
+        CancellationToken cancellationToken = default)
+        => await context.Set<Department>()
+            .IgnoreQueryFilters() // history may reference soft-deleted departments
+            .ToDictionaryAsync(d => d.Id, d => d.Name, cancellationToken);
+
     public Task<bool> NameOrCodeTakenAsync(
         string name, string code, int? excludeId, CancellationToken cancellationToken = default)
         => context.Set<Department>().AnyAsync(

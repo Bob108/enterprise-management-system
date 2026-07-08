@@ -4,7 +4,9 @@
         <AuthorizeView Policy="@("perm:" + Permissions.Employees.View)">
             <MudNavLink Href="/employees" Icon="@Icons.Material.Filled.People">Employees</MudNavLink>
         </AuthorizeView>
-        <MudNavLink Icon="@Icons.Material.Filled.Devices" Disabled="true">Assets</MudNavLink>
+        <AuthorizeView Policy="@("perm:" + Permissions.Assets.View)">
+            <MudNavLink Href="/assets" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Devices">Assets</MudNavLink>
+        </AuthorizeView>
         <MudNavLink Icon="@Icons.Material.Filled.Inventory" Disabled="true">Inventory</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.LocalShipping" Disabled="true">Fleet</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.ShoppingCart" Disabled="true">Procurement</MudNavLink>
@@ -16,6 +18,8 @@
         <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.Settings" Expanded="false">
             <MudNavLink Href="/admin/departments" Icon="@Icons.Material.Filled.AccountTree">Departments</MudNavLink>
             <MudNavLink Href="/admin/designations" Icon="@Icons.Material.Filled.Badge">Designations</MudNavLink>
+            <MudNavLink Href="/admin/asset-categories" Icon="@Icons.Material.Filled.Category">Asset categories</MudNavLink>
+            <MudNavLink Href="/admin/suppliers" Icon="@Icons.Material.Filled.Storefront">Suppliers</MudNavLink>
         </MudNavGroup>
     </AuthorizeView>
 </MudNavMenu>

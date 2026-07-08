@@ -1,0 +1,12 @@
+<div>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary">@Label</MudText>
+    <MudText Typo="Typo.body1">@Value</MudText>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Value { get; set; }
+}

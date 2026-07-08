@@ -52,6 +52,9 @@ public sealed class EmployeeRepository(EmsDbContext context) : IEmployeeReposito
             .Include(e => e.EmergencyContacts)
             .SingleOrDefaultAsync(e => e.Id == id, cancellationToken);
 
+    public Task<bool> ExistsAsync(int id, CancellationToken cancellationToken = default)
+        => context.Set<Employee>().AnyAsync(e => e.Id == id, cancellationToken);
+
     public Task<bool> EmailTakenAsync(string email, int? excludeId, CancellationToken cancellationToken = default)
         => context.Set<Employee>().AnyAsync(
             e => e.Email == email && (excludeId == null || e.Id != excludeId), cancellationToken);

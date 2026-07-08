@@ -19,6 +19,13 @@ public class EmsDbContext(DbContextOptions<EmsDbContext> options)
     public DbSet<Designation> Designations => Set<Designation>();
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<EmergencyContact> EmergencyContacts => Set<EmergencyContact>();
+    public DbSet<AssetCategory> AssetCategories => Set<AssetCategory>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<AssetAssignment> AssetAssignments => Set<AssetAssignment>();
+    public DbSet<AssetTransfer> AssetTransfers => Set<AssetTransfer>();
+    public DbSet<AssetDisposal> AssetDisposals => Set<AssetDisposal>();
+    public DbSet<DepreciationEntry> DepreciationEntries => Set<DepreciationEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

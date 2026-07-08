@@ -57,6 +57,15 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 Title = ex.Message,
             });
         }
+        catch (EMS.Domain.Common.DomainException ex)
+        {
+            // Business-rule violation raised by entity behavior (e.g. illegal status transition).
+            await WriteProblemAsync(context, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = ex.Message,
+            });
+        }
         catch (DbUpdateConcurrencyException)
         {
             await WriteProblemAsync(context, new ProblemDetails

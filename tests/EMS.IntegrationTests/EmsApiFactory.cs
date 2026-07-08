@@ -20,6 +20,9 @@ public sealed class EmsApiFactory : WebApplicationFactory<Program>
             "ConnectionStrings:Default",
             $"Server=(localdb)\\MSSQLLocalDB;Database={_databaseName};" +
             "Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True");
+
+        // Keep background posting out of tests — depreciation tests post explicitly.
+        builder.UseSetting("Jobs:DepreciationCatchUpEnabled", "false");
     }
 
     public override async ValueTask DisposeAsync()

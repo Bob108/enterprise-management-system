@@ -1,0 +1,141 @@
+@page "/admin/suppliers"
+@attribute [Authorize(Policy = "perm:" + Permissions.Administration.Settings)]
+@inject SuppliersClient Suppliers
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>EMS — Suppliers</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Suppliers</MudText>
+    <MudSpacer />
+    <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+               Variant="Variant.Filled" OnClick="() => OpenEditor(null)">New supplier</MudButton>
+</MudStack>
+
+<MudTable T="SupplierDto" Items="_items" Dense="true" Hover="true" Elevation="1" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Contact</MudTh>
+        <MudTh>Email</MudTh>
+        <MudTh>Phone</MudTh>
+        <MudTh>Assets</MudTh>
+        <MudTh Style="width: 100px;"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Contact">@(context.ContactPerson ?? "—")</MudTd>
+        <MudTd DataLabel="Email">@(context.Email ?? "—")</MudTd>
+        <MudTd DataLabel="Phone">@(context.Phone ?? "—")</MudTd>
+        <MudTd DataLabel="Assets">@context.AssetCount</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                           OnClick="() => OpenEditor(context)" aria-label="Edit" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="() => DeleteAsync(context)" aria-label="Delete" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudDialog @bind-Visible="_editorOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingId is null ? "New supplier" : "Edit supplier")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+        }
+        <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined"
+                      Required="true" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_contactPerson" Label="Contact person"
+                      Variant="Variant.Outlined" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_email" Label="Email" InputType="InputType.Email"
+                      Variant="Variant.Outlined" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_phone" Label="Phone"
+                      Variant="Variant.Outlined" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_address" Label="Address"
+                      Variant="Variant.Outlined" Lines="2" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editorOpen = false">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+    private List<SupplierDto> _items = [];
+    private bool _loading = true;
+    private bool _editorOpen;
+    private bool _saving;
+    private int? _editingId;
+    private string _name = string.Empty;
+    private string? _contactPerson;
+    private string? _email;
+    private string? _phone;
+    private string? _address;
+    private ApiError? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _items = await Suppliers.GetAllAsync() ?? [];
+        _loading = false;
+    }
+
+    private void OpenEditor(SupplierDto? item)
+    {
+        _editingId = item?.Id;
+        _name = item?.Name ?? string.Empty;
+        _contactPerson = item?.ContactPerson;
+        _email = item?.Email;
+        _phone = item?.Phone;
+        _address = item?.Address;
+        _error = null;
+        _editorOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var request = new SaveSupplierRequest(_name, _contactPerson, _email, _phone, _address);
+        _error = _editingId is { } id
+            ? await Suppliers.UpdateAsync(id, request)
+            : await Suppliers.CreateAsync(request);
+
+        _saving = false;
+
+        if (_error is null)
+        {
+            _editorOpen = false;
+            Snackbar.Add(_editingId is null ? "Supplier created." : "Supplier updated.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(SupplierDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Delete supplier", $"Delete {item.Name}?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            var error = await Suppliers.DeleteAsync(item.Id);
+            if (error is null)
+            {
+                Snackbar.Add("Supplier deleted.", Severity.Success);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(error.FullMessage, Severity.Error);
+            }
+        }
+    }
+}

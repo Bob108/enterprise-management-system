@@ -2,6 +2,7 @@ using EMS.Application.Common.Interfaces;
 using EMS.Domain.Common;
 using EMS.Domain.Repositories;
 using EMS.Infrastructure.Identity;
+using EMS.Infrastructure.Jobs;
 using EMS.Infrastructure.Persistence;
 using EMS.Infrastructure.Persistence.Interceptors;
 using EMS.Infrastructure.Persistence.Repositories;
@@ -50,6 +51,13 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentRepository, DepartmentRepository>();
         services.AddScoped<IDesignationRepository, DesignationRepository>();
         services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+        services.AddScoped<IAssetRepository, AssetRepository>();
+        services.AddScoped<IAssetCategoryRepository, AssetCategoryRepository>();
+        services.AddScoped<ISupplierRepository, SupplierRepository>();
+        services.AddScoped<IDepreciationRepository, DepreciationRepository>();
+
+        services.AddSingleton<IQrCodeGenerator, QrCodeService>();
+        services.AddHostedService<DepreciationCatchUpService>();
 
         return services;
     }

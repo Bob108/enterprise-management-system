@@ -1,0 +1,159 @@
+@page "/assets"
+@attribute [Authorize(Policy = "perm:" + Permissions.Assets.View)]
+@inject AssetsClient AssetsApi
+@inject AssetCategoriesClient Categories
+@inject DepartmentsClient Departments
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>EMS — Assets</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Assets</MudText>
+    <MudSpacer />
+    @if (_canCreate)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   Variant="Variant.Filled" OnClick="() => OpenEditorAsync(null)">
+            Register asset
+        </MudButton>
+    }
+</MudStack>
+
+<MudTable T="AssetListItemDto" @ref="_table" ServerData="LoadServerDataAsync"
+          Dense="true" Hover="true" Elevation="1"
+          OnRowClick="@(args => Navigation.NavigateTo($"/assets/{args.Item!.Id}"))"
+          RowStyle="cursor: pointer;">
+    <ToolBarContent>
+        <MudTextField T="string" @bind-Value="_search" Placeholder="Search code, name or serial"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" DebounceInterval="400" OnDebounceIntervalElapsed="ReloadAsync"
+                      Clearable="true" Class="mr-4 mt-0" />
+        <MudSelect T="int?" Value="_categoryId" ValueChanged="OnCategoryChangedAsync"
+                   Label="Category" Clearable="true" Dense="true" Class="mr-4 mt-0"
+                   Style="min-width: 180px;">
+            @foreach (var c in _categories)
+            {
+                <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Value="_departmentId" ValueChanged="OnDepartmentChangedAsync"
+                   Label="Department" Clearable="true" Dense="true" Class="mr-4 mt-0"
+                   Style="min-width: 180px;">
+            @foreach (var d in _departments)
+            {
+                <MudSelectItem T="int?" Value="@((int?)d.Id)">@d.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="AssetStatus?" Value="_status" ValueChanged="OnStatusChangedAsync"
+                   Label="Status" Clearable="true" Dense="true" Style="min-width: 150px;" Class="mt-0">
+            @foreach (var s in Enum.GetValues<AssetStatus>())
+            {
+                <MudSelectItem T="AssetStatus?" Value="@((AssetStatus?)s)">@s</MudSelectItem>
+            }
+        </MudSelect>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Category</MudTh>
+        <MudTh>Department</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Assignee</MudTh>
+        <MudTh Style="text-align: right;">Cost</MudTh>
+        <MudTh Style="text-align: right;">Book value</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Code">@context.AssetCode</MudTd>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Category">@context.CategoryName</MudTd>
+        <MudTd DataLabel="Department">@context.DepartmentName</MudTd>
+        <MudTd DataLabel="Status">
+            <MudChip T="string" Size="Size.Small" Color="@StatusStyles.For(context.Status)">@context.Status</MudChip>
+        </MudTd>
+        <MudTd DataLabel="Assignee">@(context.AssigneeName ?? "—")</MudTd>
+        <MudTd DataLabel="Cost" Style="text-align: right;">@context.PurchaseCost.ToString("N0")</MudTd>
+        <MudTd DataLabel="Book value" Style="text-align: right;">@context.BookValue.ToString("N0")</MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>No assets match the current filter.</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="[10, 20, 50]" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<AssetListItemDto>? _table;
+    private List<AssetCategoryDto> _categories = [];
+    private List<DepartmentDto> _departments = [];
+    private string? _search;
+    private int? _categoryId;
+    private int? _departmentId;
+    private AssetStatus? _status;
+    private bool _canCreate;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _canCreate = user.HasClaim(Permissions.ClaimType, Permissions.Assets.Create);
+        }
+
+        _categories = await Categories.GetAllAsync() ?? [];
+        _departments = await Departments.GetAllAsync() ?? [];
+    }
+
+    private async Task<TableData<AssetListItemDto>> LoadServerDataAsync(
+        TableState state, CancellationToken token)
+    {
+        var result = await AssetsApi.GetPageAsync(
+            _search, _categoryId, _departmentId, _status, state.Page + 1, state.PageSize);
+        return new TableData<AssetListItemDto>
+        {
+            Items = result?.Items ?? [],
+            TotalItems = result?.TotalCount ?? 0,
+        };
+    }
+
+    private Task ReloadAsync() => _table?.ReloadServerData() ?? Task.CompletedTask;
+
+    private Task OnCategoryChangedAsync(int? value)
+    {
+        _categoryId = value;
+        return ReloadAsync();
+    }
+
+    private Task OnDepartmentChangedAsync(int? value)
+    {
+        _departmentId = value;
+        return ReloadAsync();
+    }
+
+    private Task OnStatusChangedAsync(AssetStatus? value)
+    {
+        _status = value;
+        return ReloadAsync();
+    }
+
+    private async Task OpenEditorAsync(int? id)
+    {
+        var parameters = new DialogParameters<AssetDialog> { { x => x.AssetId, id } };
+        var dialog = await DialogService.ShowAsync<AssetDialog>(
+            id is null ? "Register asset" : "Edit asset",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add(id is null ? "Asset registered." : "Asset updated.", Severity.Success);
+            await ReloadAsync();
+        }
+    }
+}

@@ -1,0 +1,153 @@
+@page "/admin/asset-categories"
+@attribute [Authorize(Policy = "perm:" + Permissions.Administration.Settings)]
+@inject AssetCategoriesClient Categories
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>EMS — Asset categories</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Asset categories</MudText>
+    <MudSpacer />
+    <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+               Variant="Variant.Filled" OnClick="() => OpenEditor(null)">New category</MudButton>
+</MudStack>
+
+<MudTable T="AssetCategoryDto" Items="_items" Dense="true" Hover="true" Elevation="1" Loading="_loading">
+    <HeaderContent>
+        <MudTh>Prefix</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Method</MudTh>
+        <MudTh>Useful life</MudTh>
+        <MudTh>Residual</MudTh>
+        <MudTh>Assets</MudTh>
+        <MudTh Style="width: 100px;"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Prefix">@context.CodePrefix</MudTd>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="Method">@context.Method</MudTd>
+        <MudTd DataLabel="Useful life">@context.UsefulLifeMonths months</MudTd>
+        <MudTd DataLabel="Residual">@context.ResidualRate.ToString("P0")</MudTd>
+        <MudTd DataLabel="Assets">@context.AssetCount</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                           OnClick="() => OpenEditor(context)" aria-label="Edit" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="() => DeleteAsync(context)" aria-label="Delete" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudDialog @bind-Visible="_editorOpen" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingId is null ? "New category" : "Edit category")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+        }
+        <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined"
+                      Required="true" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_prefix" Label="Code prefix (2–6 letters)"
+                      Variant="Variant.Outlined" Required="true" Class="mb-3" />
+        <MudSelect T="DepreciationMethod" @bind-Value="_method" Label="Depreciation method"
+                   Variant="Variant.Outlined" Class="mb-3">
+            @foreach (var m in Enum.GetValues<DepreciationMethod>())
+            {
+                <MudSelectItem T="DepreciationMethod" Value="@m">@m</MudSelectItem>
+            }
+        </MudSelect>
+        <MudNumericField T="int" @bind-Value="_usefulLifeMonths" Label="Useful life (months)"
+                         Variant="Variant.Outlined" Min="1" Max="600" Class="mb-3" />
+        <MudNumericField T="decimal" @bind-Value="_residualRate" Label="Residual rate (0–0.9)"
+                         Variant="Variant.Outlined" Min="0" Max="0.9m" Step="0.05m" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_description" Label="Description"
+                      Variant="Variant.Outlined" Lines="2" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editorOpen = false">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+    private List<AssetCategoryDto> _items = [];
+    private bool _loading = true;
+    private bool _editorOpen;
+    private bool _saving;
+    private int? _editingId;
+    private string _name = string.Empty;
+    private string _prefix = string.Empty;
+    private DepreciationMethod _method = DepreciationMethod.StraightLine;
+    private int _usefulLifeMonths = 36;
+    private decimal _residualRate = 0.10m;
+    private string? _description;
+    private ApiError? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _items = await Categories.GetAllAsync() ?? [];
+        _loading = false;
+    }
+
+    private void OpenEditor(AssetCategoryDto? item)
+    {
+        _editingId = item?.Id;
+        _name = item?.Name ?? string.Empty;
+        _prefix = item?.CodePrefix ?? string.Empty;
+        _method = item?.Method ?? DepreciationMethod.StraightLine;
+        _usefulLifeMonths = item?.UsefulLifeMonths ?? 36;
+        _residualRate = item?.ResidualRate ?? 0.10m;
+        _description = item?.Description;
+        _error = null;
+        _editorOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _error = null;
+
+        var request = new SaveAssetCategoryRequest(
+            _name, _prefix, _method, _usefulLifeMonths, _residualRate, _description);
+        _error = _editingId is { } id
+            ? await Categories.UpdateAsync(id, request)
+            : await Categories.CreateAsync(request);
+
+        _saving = false;
+
+        if (_error is null)
+        {
+            _editorOpen = false;
+            Snackbar.Add(_editingId is null ? "Category created." : "Category updated.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task DeleteAsync(AssetCategoryDto item)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Delete category", $"Delete {item.Name} ({item.CodePrefix})?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            var error = await Categories.DeleteAsync(item.Id);
+            if (error is null)
+            {
+                Snackbar.Add("Category deleted.", Severity.Success);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(error.FullMessage, Severity.Error);
+            }
+        }
+    }
+}

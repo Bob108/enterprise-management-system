@@ -1,0 +1,184 @@
+@inject AssetsClient AssetsApi
+@inject AssetCategoriesClient Categories
+@inject DepartmentsClient Departments
+@inject SuppliersClient Suppliers
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="8">
+                    <MudTextField T="string" @bind-Value="_name" Label="Name"
+                                  Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="int" @bind-Value="_categoryId" Label="Category" Variant="Variant.Outlined"
+                               Required="true" Disabled="@(AssetId is not null)"
+                               HelperText="@(AssetId is not null ? "Fixed after registration" : null)">
+                        @foreach (var c in _categories)
+                        {
+                            <MudSelectItem T="int" Value="@c.Id">@c.Name (@c.CodePrefix)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" @bind-Value="_departmentId" Label="Department"
+                               Variant="Variant.Outlined" Required="true">
+                        @foreach (var d in _departments)
+                        {
+                            <MudSelectItem T="int" Value="@d.Id">@d.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int?" @bind-Value="_supplierId" Label="Supplier" Clearable="true"
+                               Variant="Variant.Outlined">
+                        @foreach (var s in _suppliers)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)s.Id)">@s.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_serialNumber" Label="Serial number"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" @bind-Value="_model" Label="Model"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_purchaseDate" Label="Purchase date"
+                                   Variant="Variant.Outlined" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_purchaseCost" Label="Purchase cost"
+                                     Variant="Variant.Outlined" Min="0" Format="N2" Required="true" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudDatePicker @bind-Date="_warrantyExpiry" Label="Warranty expiry"
+                                   Variant="Variant.Outlined" Clearable="true" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" @bind-Value="_notes" Label="Notes"
+                                  Variant="Variant.Outlined" Lines="2" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<AssetCategoryDto> _categories = [];
+    private List<DepartmentDto> _departments = [];
+    private List<SupplierDto> _suppliers = [];
+    private bool _loading = true;
+    private bool _saving;
+    private ApiError? _error;
+
+    private string _name = string.Empty;
+    private int _categoryId;
+    private int _departmentId;
+    private int? _supplierId;
+    private string? _serialNumber;
+    private string? _model;
+    private DateTime? _purchaseDate = DateTime.Today;
+    private decimal _purchaseCost;
+    private DateTime? _warrantyExpiry;
+    private string? _notes;
+    private string _rowVersion = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public int? AssetId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await Categories.GetAllAsync() ?? [];
+        _departments = await Departments.GetAllAsync() ?? [];
+        _suppliers = await Suppliers.GetAllAsync() ?? [];
+
+        if (AssetId is { } id)
+        {
+            var detail = await AssetsApi.GetByIdAsync(id);
+            if (detail is not null)
+            {
+                _name = detail.Name;
+                _categoryId = detail.CategoryId;
+                _departmentId = detail.DepartmentId;
+                _supplierId = detail.SupplierId;
+                _serialNumber = detail.SerialNumber;
+                _model = detail.Model;
+                _purchaseDate = detail.PurchaseDate.ToDateTime(TimeOnly.MinValue);
+                _purchaseCost = detail.PurchaseCost;
+                _warrantyExpiry = detail.WarrantyExpiryDate?.ToDateTime(TimeOnly.MinValue);
+                _notes = detail.Notes;
+                _rowVersion = detail.RowVersion;
+            }
+        }
+        else
+        {
+            _categoryId = _categories.FirstOrDefault()?.Id ?? 0;
+            _departmentId = _departments.FirstOrDefault()?.Id ?? 0;
+        }
+
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || _purchaseDate is null || _purchaseCost <= 0)
+        {
+            _error = new ApiError("Name, purchase date and a positive cost are required.", null);
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        var purchaseDate = DateOnly.FromDateTime(_purchaseDate.Value);
+        var warranty = _warrantyExpiry is { } w ? DateOnly.FromDateTime(w) : (DateOnly?)null;
+
+        if (AssetId is { } id)
+        {
+            _error = await AssetsApi.UpdateAsync(id, new UpdateAssetRequest(
+                _name, _departmentId, _supplierId, _serialNumber, _model,
+                purchaseDate, _purchaseCost, warranty, _notes, _rowVersion));
+        }
+        else
+        {
+            (_, _error) = await AssetsApi.RegisterAsync(new RegisterAssetRequest(
+                _name, _categoryId, _departmentId, _supplierId, _serialNumber, _model,
+                purchaseDate, _purchaseCost, warranty, _notes));
+        }
+
+        _saving = false;
+
+        if (_error is null)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+}
