@@ -1,0 +1,322 @@
+@page "/procurement/requests/{Id:int}"
+@attribute [Authorize]
+@inject ProcurementClient Procurement
+@inject SuppliersClient Suppliers
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>EMS — Purchase request</PageTitle>
+
+@if (_request is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/procurement"))" aria-label="Back" />
+        <MudText Typo="Typo.h5">@_request.RequestNumber</MudText>
+        <MudChip T="string" Size="Size.Small" Color="@StatusStyles.For(_request.Status)" Class="ml-2">
+            @_request.Status
+        </MudChip>
+        @if (_request.Status == PurchaseRequestStatus.Submitted && _request.FirstApprovedAtUtc is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">
+                Awaiting second approval
+            </MudChip>
+        }
+    </MudStack>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudGrid Spacing="2">
+                    <MudItem xs="6" sm="3"><Field Label="Requester" Value="@_request.RequestedByName" /></MudItem>
+                    <MudItem xs="6" sm="3"><Field Label="Department" Value="@_request.DepartmentName" /></MudItem>
+                    <MudItem xs="6" sm="3"><Field Label="Estimated total" Value="@_request.TotalEstimatedCost.ToString("N2")" /></MudItem>
+                    <MudItem xs="6" sm="3">
+                        <Field Label="Approval route"
+                               Value="@(_request.RequiresSecondApproval ? "Two-level (above threshold)" : "Single level")" />
+                    </MudItem>
+                    <MudItem xs="12"><Field Label="Justification" Value="@(_request.Justification ?? "—")" /></MudItem>
+                </MudGrid>
+
+                @if (_request.RejectionReason is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">
+                        Rejected: @_request.RejectionReason
+                    </MudAlert>
+                }
+                @if (_request.FirstApprovedAtUtc is not null)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mt-3">
+                        L1 approved by @_request.FirstApprovedByName on @_request.FirstApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm")
+                        @if (_request.SecondApprovedAtUtc is not null)
+                        {
+                            <br />
+                            @: L2 approved by @_request.SecondApprovedByName on @_request.SecondApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm")
+                        }
+                    </MudAlert>
+                }
+                @if (_request.PurchaseOrderId is { } poId)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+                        Converted to purchase order —
+                        <MudLink Href="@($"/procurement/orders/{poId}")">open the order</MudLink>.
+                    </MudAlert>
+                }
+
+                <MudStack Row="true" Spacing="2" Class="mt-4" Wrap="Wrap.Wrap">
+                    @if (_request.Status == PurchaseRequestStatus.Draft && _isOwner)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Edit" OnClick="EditAsync">Edit</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Send" OnClick="SubmitAsync">Submit</MudButton>
+                    }
+                    @if (_request.Status == PurchaseRequestStatus.Submitted && _canApproveStage)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Check" OnClick="ApproveAsync">
+                            @(_request.FirstApprovedAtUtc is null ? "Approve (L1)" : "Approve (L2)")
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Close" OnClick="() => _rejectOpen = true">Reject</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Undo" OnClick="ReturnAsync">Return to draft</MudButton>
+                    }
+                    @if (_request.Status is PurchaseRequestStatus.Draft or PurchaseRequestStatus.Submitted
+                        && (_isOwner || _canManageOrders))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Dark" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Cancel" OnClick="CancelAsync">Cancel request</MudButton>
+                    }
+                    @if (_request.Status == PurchaseRequestStatus.Approved && _canManageOrders)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.ShoppingCart" OnClick="OpenConvert">
+                            Create purchase order
+                        </MudButton>
+                    }
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Lines</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead>
+                        <tr>
+                            <th>Description</th><th>Nature</th><th>Reference</th>
+                            <th style="text-align: right;">Qty</th>
+                            <th style="text-align: right;">Est. unit cost</th>
+                            <th style="text-align: right;">Est. total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _request.Lines)
+                        {
+                            <tr>
+                                <td>@line.Description</td>
+                                <td>@line.Nature</td>
+                                <td>@(line.Nature == ItemNature.Asset ? line.AssetCategoryName : line.InventoryItemName)</td>
+                                <td style="text-align: right;">@line.Quantity</td>
+                                <td style="text-align: right;">@line.EstimatedUnitCost.ToString("N2")</td>
+                                <td style="text-align: right;">@((line.Quantity * line.EstimatedUnitCost).ToString("N2"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudDialog @bind-Visible="_rejectOpen" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Reject @_request.RequestNumber</MudText></TitleContent>
+        <DialogContent>
+            <MudTextField T="string" @bind-Value="_rejectReason" Label="Reason (required)"
+                          Variant="Variant.Outlined" Lines="2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _rejectOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="RejectAsync">Reject</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog @bind-Visible="_convertOpen" Options="_convertDialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Create purchase order from @_request.RequestNumber</MudText></TitleContent>
+        <DialogContent>
+            @if (_convertError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_convertError.FullMessage</MudAlert>
+            }
+            <MudSelect T="int" @bind-Value="_supplierId" Label="Supplier" Variant="Variant.Outlined" Class="mb-3">
+                @foreach (var s in _suppliers)
+                {
+                    <MudSelectItem T="int" Value="@s.Id">@s.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudDatePicker @bind-Date="_expectedDate" Label="Expected delivery" Variant="Variant.Outlined"
+                           Clearable="true" Class="mb-3" />
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Agreed unit prices</MudText>
+            @foreach (var price in _prices)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.body2" Style="min-width: 50%;">@price.Description (×@price.Quantity)</MudText>
+                    <MudNumericField T="decimal" @bind-Value="price.UnitPrice" Label="Unit price"
+                                     Variant="Variant.Outlined" Min="0.01m" Format="N2" Margin="Margin.Dense" />
+                </MudStack>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _convertOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConvertAsync">Create order</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private sealed class PriceForm
+    {
+        public int LineId { get; init; }
+        public string Description { get; init; } = string.Empty;
+        public int Quantity { get; init; }
+        public decimal UnitPrice { get; set; }
+    }
+
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+    private readonly DialogOptions _convertDialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+    private PurchaseRequestDetailDto? _request;
+    private List<SupplierDto> _suppliers = [];
+    private readonly List<PriceForm> _prices = [];
+    private bool _rejectOpen;
+    private bool _convertOpen;
+    private string? _rejectReason;
+    private int _supplierId;
+    private DateTime? _expectedDate;
+    private ApiError? _convertError;
+    private bool _isOwner;
+    private bool _canManageOrders;
+    private bool _canApproveStage;
+    private System.Security.Claims.ClaimsPrincipal? _user;
+
+    [Parameter]
+    public int Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            _user = (await AuthState).User;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _request = await Procurement.GetRequestAsync(Id);
+        if (_request is null || _user is null)
+        {
+            return;
+        }
+
+        var userId = _user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        _isOwner = userId == _request.RequestedByUserId.ToString();
+        _canManageOrders = _user.HasClaim(Permissions.ClaimType, Permissions.Procurement.ManagePurchaseOrders);
+
+        var stagePermission = _request.FirstApprovedAtUtc is null
+            ? Permissions.Procurement.ApproveL1
+            : Permissions.Procurement.ApproveL2;
+        _canApproveStage = _user.HasClaim(Permissions.ClaimType, stagePermission);
+    }
+
+    private async Task EditAsync()
+    {
+        var parameters = new DialogParameters<RequestDialog> { { x => x.RequestId, (int?)Id } };
+        var dialog = await DialogService.ShowAsync<RequestDialog>(
+            "Edit purchase request", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true });
+        var result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add("Request updated.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private Task SubmitAsync() => RunAsync(() => Procurement.SubmitAsync(Id), "Request submitted for approval.");
+
+    private Task ApproveAsync() => RunAsync(() => Procurement.ApproveAsync(Id), "Request approved.");
+
+    private Task ReturnAsync() => RunAsync(() => Procurement.ReturnAsync(Id), "Returned to requester.");
+
+    private Task CancelAsync() => RunAsync(() => Procurement.CancelRequestAsync(Id), "Request cancelled.");
+
+    private async Task RejectAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_rejectReason))
+        {
+            Snackbar.Add("A reason is required to reject.", Severity.Warning);
+            return;
+        }
+
+        _rejectOpen = false;
+        await RunAsync(() => Procurement.RejectAsync(Id, _rejectReason!), "Request rejected.");
+    }
+
+    private async void OpenConvert()
+    {
+        _suppliers = await Suppliers.GetAllAsync() ?? [];
+        _supplierId = _suppliers.FirstOrDefault()?.Id ?? 0;
+        _prices.Clear();
+        _prices.AddRange(_request!.Lines.Select(l => new PriceForm
+        {
+            LineId = l.Id!.Value,
+            Description = l.Description,
+            Quantity = l.Quantity,
+            UnitPrice = l.EstimatedUnitCost,
+        }));
+        _convertError = null;
+        _convertOpen = true;
+        StateHasChanged();
+    }
+
+    private async Task ConvertAsync()
+    {
+        var request = new CreatePurchaseOrderRequest(
+            _supplierId,
+            _expectedDate is { } d ? DateOnly.FromDateTime(d) : null,
+            null,
+            _prices.Select(p => new CreatePurchaseOrderLine(p.LineId, p.UnitPrice)).ToList());
+
+        var (orderId, error) = await Procurement.ConvertAsync(Id, request);
+        if (error is null)
+        {
+            Snackbar.Add("Purchase order created.", Severity.Success);
+            Navigation.NavigateTo($"/procurement/orders/{orderId}");
+        }
+        else
+        {
+            _convertError = error;
+        }
+    }
+
+    private async Task RunAsync(Func<Task<ApiError?>> action, string successMessage)
+    {
+        var error = await action();
+        if (error is null)
+        {
+            Snackbar.Add(successMessage, Severity.Success);
+            await LoadAsync();
+        }
+        else
+        {
+            Snackbar.Add(error.FullMessage, Severity.Error);
+        }
+    }
+}

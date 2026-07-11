@@ -8,7 +8,11 @@ using MediatR;
 
 namespace EMS.Application.Inventory;
 
-[RequiresPermission(Permissions.Inventory.View)]
+/// <summary>
+/// No permission attribute: the item catalog doubles as the picker for purchase-request
+/// consumable lines, so every authenticated user may list it. Detail and the movement
+/// ledger stay behind inventory.view.
+/// </summary>
 public sealed record GetInventoryItemsQuery(
     string? Search,
     bool LowStockOnly = false,

@@ -1,0 +1,212 @@
+@inject ProcurementClient Procurement
+@inject DepartmentsClient Departments
+@inject AssetCategoriesClient Categories
+@inject InventoryClient Inventory
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-4">@_error.FullMessage</MudAlert>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="5">
+                    <MudSelect T="int" @bind-Value="_departmentId" Label="Department"
+                               Variant="Variant.Outlined" Required="true">
+                        @foreach (var d in _departments)
+                        {
+                            <MudSelectItem T="int" Value="@d.Id">@d.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="7">
+                    <MudTextField T="string" @bind-Value="_justification" Label="Justification"
+                                  Variant="Variant.Outlined" Lines="1" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.subtitle1">Lines</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary ml-2">
+                            Asset lines create serialized assets at receiving; consumables restock inventory.
+                        </MudText>
+                        <MudSpacer />
+                        <MudButton StartIcon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                   OnClick="AddLine">Add line</MudButton>
+                    </MudStack>
+                </MudItem>
+
+                @foreach (var line in _lines)
+                {
+                    <MudItem xs="12" sm="2">
+                        <MudSelect T="ItemNature" @bind-Value="line.Nature" Label="Nature"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="ItemNature" Value="ItemNature.Asset">Asset</MudSelectItem>
+                            <MudSelectItem T="ItemNature" Value="ItemNature.Consumable">Consumable</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        <MudTextField T="string" @bind-Value="line.Description" Label="Description"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" sm="3">
+                        @if (line.Nature == ItemNature.Asset)
+                        {
+                            <MudSelect T="int?" @bind-Value="line.AssetCategoryId" Label="Asset category"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                @foreach (var c in _categories)
+                                {
+                                    <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else
+                        {
+                            <MudSelect T="int?" @bind-Value="line.InventoryItemId" Label="Inventory item"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                @foreach (var i in _items)
+                                {
+                                    <MudSelectItem T="int?" Value="@((int?)i.Id)">@i.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                    </MudItem>
+                    <MudItem xs="5" sm="1">
+                        <MudNumericField T="int" @bind-Value="line.Quantity" Label="Qty"
+                                         Variant="Variant.Outlined" Min="1" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="5" sm="2">
+                        <MudNumericField T="decimal" @bind-Value="line.EstimatedUnitCost" Label="Est. unit cost"
+                                         Variant="Variant.Outlined" Min="0" Format="N2" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="2" sm="1" Class="d-flex align-center">
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       OnClick="() => _lines.Remove(line)" aria-label="Remove line" />
+                    </MudItem>
+                }
+
+                <MudItem xs="12" Class="d-flex justify-end">
+                    <MudText Typo="Typo.subtitle1">
+                        Estimated total: @_lines.Sum(l => l.Quantity * l.EstimatedUnitCost).ToString("N2")
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_saving">
+            Save draft
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private sealed class LineForm
+    {
+        public ItemNature Nature { get; set; } = ItemNature.Asset;
+        public string Description { get; set; } = string.Empty;
+        public int? AssetCategoryId { get; set; }
+        public int? InventoryItemId { get; set; }
+        public int Quantity { get; set; } = 1;
+        public decimal EstimatedUnitCost { get; set; }
+    }
+
+    private readonly List<LineForm> _lines = [];
+    private List<DepartmentDto> _departments = [];
+    private List<AssetCategoryDto> _categories = [];
+    private List<InventoryItemListDto> _items = [];
+    private int _departmentId;
+    private string? _justification;
+    private bool _loading = true;
+    private bool _saving;
+    private ApiError? _error;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>When set, the dialog edits an existing draft.</summary>
+    [Parameter]
+    public int? RequestId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _departments = await Departments.GetAllAsync() ?? [];
+        _categories = await Categories.GetAllAsync() ?? [];
+        _items = (await Inventory.GetPageAsync(null, false, 1, 100))?.Items.ToList() ?? [];
+
+        if (RequestId is { } id)
+        {
+            var detail = await Procurement.GetRequestAsync(id);
+            if (detail is not null)
+            {
+                _departmentId = detail.DepartmentId;
+                _justification = detail.Justification;
+                _lines.AddRange(detail.Lines.Select(l => new LineForm
+                {
+                    Nature = l.Nature,
+                    Description = l.Description,
+                    AssetCategoryId = l.AssetCategoryId,
+                    InventoryItemId = l.InventoryItemId,
+                    Quantity = l.Quantity,
+                    EstimatedUnitCost = l.EstimatedUnitCost,
+                }));
+            }
+        }
+        else
+        {
+            _departmentId = _departments.FirstOrDefault()?.Id ?? 0;
+            AddLine();
+        }
+
+        _loading = false;
+    }
+
+    private void AddLine() => _lines.Add(new LineForm());
+
+    private async Task SaveAsync()
+    {
+        if (_lines.Count == 0 || _lines.Any(l => string.IsNullOrWhiteSpace(l.Description)))
+        {
+            _error = new ApiError("Every line needs a description, and at least one line is required.", null);
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+
+        var request = new SavePurchaseRequestRequest(
+            _departmentId,
+            _justification,
+            _lines.Select(l => new SavePurchaseRequestLine(
+                l.Description, l.Nature, l.AssetCategoryId, l.InventoryItemId,
+                l.Quantity, l.EstimatedUnitCost)).ToList());
+
+        if (RequestId is { } id)
+        {
+            _error = await Procurement.UpdateRequestAsync(id, request);
+            if (_error is null)
+            {
+                MudDialog.Close(DialogResult.Ok(id));
+            }
+        }
+        else
+        {
+            var (newId, error) = await Procurement.CreateRequestAsync(request);
+            _error = error;
+            if (_error is null)
+            {
+                MudDialog.Close(DialogResult.Ok(newId!.Value));
+            }
+        }
+
+        _saving = false;
+    }
+}

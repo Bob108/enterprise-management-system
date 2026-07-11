@@ -44,6 +44,7 @@ builder.Services.AddScoped<AssetCategoriesClient>();
 builder.Services.AddScoped<SuppliersClient>();
 builder.Services.AddScoped<InventoryClient>();
 builder.Services.AddScoped<WarehousesClient>();
+builder.Services.AddScoped<ProcurementClient>();
 
 var host = builder.Build();
 

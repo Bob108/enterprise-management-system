@@ -24,6 +24,12 @@ public static class DependencyInjection
 
         services.AddDbContext<EmsDbContext>((serviceProvider, options) => options
             .UseSqlServer(configuration.GetConnectionString("Default"))
+            // Procurement documents intentionally keep required navigations to
+            // soft-deletable masters; their repositories use IgnoreQueryFilters so
+            // history never disappears. Suppress the resulting model warning.
+            .ConfigureWarnings(warnings => warnings.Ignore(
+                Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId
+                    .PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))
             .AddInterceptors(serviceProvider.GetRequiredService<AuditSaveChangesInterceptor>()));
 
         services
@@ -57,6 +63,10 @@ public static class DependencyInjection
         services.AddScoped<IDepreciationRepository, DepreciationRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<IWarehouseRepository, WarehouseRepository>();
+        services.AddScoped<IProcurementRepository, ProcurementRepository>();
+
+        services.Configure<Application.Common.ProcurementOptions>(
+            configuration.GetSection(Application.Common.ProcurementOptions.SectionName));
 
         services.AddSingleton<IQrCodeGenerator, QrCodeService>();
         services.AddHostedService<DepreciationCatchUpService>();

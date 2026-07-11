@@ -79,6 +79,7 @@ public sealed class EmsDbInitializer(
         await SeedHrAsync(cancellationToken);
         await SeedAssetsAsync(cancellationToken);
         await SeedInventoryAsync(cancellationToken);
+        await SeedProcurementAsync(cancellationToken);
         logger.LogInformation("Database migrated and seeded");
     }
 
@@ -366,6 +367,73 @@ public sealed class EmsDbInitializer(
                 });
             }
         }
+    }
+
+    private async Task SeedProcurementAsync(CancellationToken cancellationToken)
+    {
+        if (await context.PurchaseRequests.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        var employeeUser = await userManager.FindByEmailAsync("employee@ems.local");
+        var adminUser = await userManager.FindByEmailAsync("admin@ems.local");
+        if (employeeUser is null || adminUser is null)
+        {
+            return;
+        }
+
+        var itDepartment = await context.Departments.SingleAsync(d => d.Code == "IT", cancellationToken);
+        var opsDepartment = await context.Departments.SingleAsync(d => d.Code == "OPS", cancellationToken);
+        var laptopCategory = await context.AssetCategories.SingleAsync(c => c.CodePrefix == "ITE", cancellationToken);
+        var toner = await context.InventoryItems.SingleAsync(i => i.ItemCode == "INV-0001", cancellationToken);
+
+        // Draft owned by the demo employee — editable/submittable in the demo.
+        var draft = new PurchaseRequest
+        {
+            RequestNumber = "PR-0001",
+            RequestedByUserId = employeeUser.Id,
+            RequestedByName = employeeUser.DisplayName,
+            DepartmentId = opsDepartment.Id,
+            Justification = "Replacement peripherals for the operations desk.",
+            Lines =
+            [
+                new PurchaseRequestLine
+                {
+                    Description = "HP 26A Printer Toner", Nature = ItemNature.Consumable,
+                    InventoryItemId = toner.Id, Quantity = 6, EstimatedUnitCost = 9_500m,
+                },
+            ],
+        };
+        draft.RecalculateTotal();
+
+        // Submitted, awaiting first approval — the demo approval target.
+        var submitted = new PurchaseRequest
+        {
+            RequestNumber = "PR-0002",
+            RequestedByUserId = employeeUser.Id,
+            RequestedByName = employeeUser.DisplayName,
+            DepartmentId = itDepartment.Id,
+            Justification = "Two developer laptops for the new hires starting next month.",
+            Lines =
+            [
+                new PurchaseRequestLine
+                {
+                    Description = "Dell Latitude 5550 Laptop", Nature = ItemNature.Asset,
+                    AssetCategoryId = laptopCategory.Id, Quantity = 2, EstimatedUnitCost = 150_000m,
+                },
+                new PurchaseRequestLine
+                {
+                    Description = "USB-C Docking Station", Nature = ItemNature.Asset,
+                    AssetCategoryId = laptopCategory.Id, Quantity = 2, EstimatedUnitCost = 28_000m,
+                },
+            ],
+        };
+        submitted.RecalculateTotal();
+        submitted.Submit(secondApprovalThreshold: 100_000m);
+
+        context.PurchaseRequests.AddRange(draft, submitted);
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     private async Task EnsureUserAsync(string email, string password, string displayName, string role)

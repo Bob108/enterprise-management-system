@@ -11,7 +11,8 @@
             <MudNavLink Href="/inventory" Icon="@Icons.Material.Filled.Inventory">Inventory</MudNavLink>
         </AuthorizeView>
         <MudNavLink Icon="@Icons.Material.Filled.LocalShipping" Disabled="true">Fleet</MudNavLink>
-        <MudNavLink Icon="@Icons.Material.Filled.ShoppingCart" Disabled="true">Procurement</MudNavLink>
+        <MudNavLink Href="/procurement" Match="NavLinkMatch.Prefix"
+                    Icon="@Icons.Material.Filled.ShoppingCart">Procurement</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.Build" Disabled="true">Maintenance</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.EventAvailable" Disabled="true">Leave</MudNavLink>
         <MudNavLink Icon="@Icons.Material.Filled.Assessment" Disabled="true">Reports</MudNavLink>

@@ -127,6 +127,34 @@ public sealed class InventoryRepository(EmsDbContext context) : IInventoryReposi
         return true;
     }
 
+    /// <inheritdoc />
+    public async Task StageReceiptAsync(
+        InventoryTransaction transaction, CancellationToken cancellationToken = default)
+    {
+        if (transaction.QuantityChange <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(transaction), "StageReceipt only accepts positive quantities.");
+        }
+
+        var level = await context.Set<StockLevel>().SingleOrDefaultAsync(
+            s => s.ItemId == transaction.ItemId && s.WarehouseId == transaction.WarehouseId,
+            cancellationToken);
+        if (level is null)
+        {
+            level = new StockLevel
+            {
+                ItemId = transaction.ItemId,
+                WarehouseId = transaction.WarehouseId,
+                Quantity = 0,
+            };
+            context.Add(level);
+        }
+
+        level.Quantity += transaction.QuantityChange;
+        context.Add(transaction);
+    }
+
     public async Task<IReadOnlyList<InventoryTransaction>> GetTransactionsAsync(
         int itemId, int take, CancellationToken cancellationToken = default)
         => await context.Set<InventoryTransaction>()

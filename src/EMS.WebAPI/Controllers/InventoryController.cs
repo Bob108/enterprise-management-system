@@ -12,10 +12,11 @@ namespace EMS.WebAPI.Controllers;
 
 [ApiController]
 [Route("api/v1/inventory/items")]
+[Authorize]
 public sealed class InventoryController(ISender mediator) : ControllerBase
 {
+    // Catalog list is authenticated-only: it feeds the purchase-request item picker.
     [HttpGet]
-    [HasPermission(Permissions.Inventory.View)]
     public async Task<ActionResult<PagedResult<InventoryItemListDto>>> GetItems(
         [FromQuery] string? search,
         [FromQuery] bool lowStockOnly = false,

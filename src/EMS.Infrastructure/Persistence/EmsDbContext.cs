@@ -30,6 +30,9 @@ public class EmsDbContext(DbContextOptions<EmsDbContext> options)
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
+    public DbSet<PurchaseRequest> PurchaseRequests => Set<PurchaseRequest>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<GoodsReceivedNote> GoodsReceivedNotes => Set<GoodsReceivedNote>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

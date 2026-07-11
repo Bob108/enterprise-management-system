@@ -1,0 +1,201 @@
+@page "/procurement"
+@attribute [Authorize]
+@inject ProcurementClient Procurement
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>EMS — Procurement</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Procurement</MudText>
+    <MudSpacer />
+    @if (_canRaise)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   Variant="Variant.Filled" OnClick="NewRequestAsync">
+            New request
+        </MudButton>
+    }
+</MudStack>
+
+<MudTabs Elevation="1" ApplyEffectsToContainer="true">
+    <MudTabPanel Text="Purchase requests">
+        <MudTable T="PurchaseRequestListItemDto" @ref="_requestsTable" ServerData="LoadRequestsAsync"
+                  Dense="true" Hover="true" Elevation="0" Class="mt-2"
+                  OnRowClick="@(args => Navigation.NavigateTo($"/procurement/requests/{args.Item!.Id}"))"
+                  RowStyle="cursor: pointer;">
+            <ToolBarContent>
+                <MudTextField T="string" @bind-Value="_requestSearch" Placeholder="Search number or requester"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" DebounceInterval="400" OnDebounceIntervalElapsed="ReloadRequestsAsync"
+                              Clearable="true" Class="mr-4 mt-0" />
+                <MudSelect T="PurchaseRequestStatus?" Value="_requestStatus" ValueChanged="OnRequestStatusChangedAsync"
+                           Label="Status" Clearable="true" Dense="true" Style="min-width: 160px;" Class="mr-6 mt-0">
+                    @foreach (var s in Enum.GetValues<PurchaseRequestStatus>())
+                    {
+                        <MudSelectItem T="PurchaseRequestStatus?" Value="@((PurchaseRequestStatus?)s)">@s</MudSelectItem>
+                    }
+                </MudSelect>
+                @if (_canViewAll)
+                {
+                    <MudSwitch T="bool" Value="_mineOnly" ValueChanged="OnMineOnlyChangedAsync"
+                               Color="Color.Primary" Label="My requests only" Class="mt-0" />
+                }
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Number</MudTh>
+                <MudTh>Requester</MudTh>
+                <MudTh>Department</MudTh>
+                <MudTh Style="text-align: right;">Estimated total</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Raised</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Number">@context.RequestNumber</MudTd>
+                <MudTd DataLabel="Requester">@context.RequestedByName</MudTd>
+                <MudTd DataLabel="Department">@context.DepartmentName</MudTd>
+                <MudTd DataLabel="Estimated total" Style="text-align: right;">@context.TotalEstimatedCost.ToString("N0")</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@StatusStyles.For(context.Status)">@context.Status</MudChip>
+                    @if (context.AwaitingSecondApproval)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">L2 pending</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Raised">@context.CreatedAtUtc.ToString("yyyy-MM-dd")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText>No purchase requests found.</MudText></NoRecordsContent>
+            <PagerContent><MudTablePager PageSizeOptions="[10, 20, 50]" /></PagerContent>
+        </MudTable>
+    </MudTabPanel>
+
+    @if (_canViewAll)
+    {
+        <MudTabPanel Text="Purchase orders">
+            <MudTable T="PurchaseOrderListItemDto" @ref="_ordersTable" ServerData="LoadOrdersAsync"
+                      Dense="true" Hover="true" Elevation="0" Class="mt-2"
+                      OnRowClick="@(args => Navigation.NavigateTo($"/procurement/orders/{args.Item!.Id}"))"
+                      RowStyle="cursor: pointer;">
+                <ToolBarContent>
+                    <MudTextField T="string" @bind-Value="_orderSearch" Placeholder="Search number, request or supplier"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true" DebounceInterval="400" OnDebounceIntervalElapsed="ReloadOrdersAsync"
+                                  Clearable="true" Class="mr-4 mt-0" />
+                    <MudSelect T="PurchaseOrderStatus?" Value="_orderStatus" ValueChanged="OnOrderStatusChangedAsync"
+                               Label="Status" Clearable="true" Dense="true" Style="min-width: 170px;" Class="mt-0">
+                        @foreach (var s in Enum.GetValues<PurchaseOrderStatus>())
+                        {
+                            <MudSelectItem T="PurchaseOrderStatus?" Value="@((PurchaseOrderStatus?)s)">@s</MudSelectItem>
+                        }
+                    </MudSelect>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Number</MudTh>
+                    <MudTh>Request</MudTh>
+                    <MudTh>Supplier</MudTh>
+                    <MudTh Style="text-align: right;">Value</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Created</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Number">@context.OrderNumber</MudTd>
+                    <MudTd DataLabel="Request">@context.RequestNumber</MudTd>
+                    <MudTd DataLabel="Supplier">@context.SupplierName</MudTd>
+                    <MudTd DataLabel="Value" Style="text-align: right;">@context.TotalValue.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@StatusStyles.For(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Created">@context.CreatedAtUtc.ToString("yyyy-MM-dd")</MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText>No purchase orders found.</MudText></NoRecordsContent>
+                <PagerContent><MudTablePager PageSizeOptions="[10, 20, 50]" /></PagerContent>
+            </MudTable>
+        </MudTabPanel>
+    }
+</MudTabs>
+
+@code {
+    private MudTable<PurchaseRequestListItemDto>? _requestsTable;
+    private MudTable<PurchaseOrderListItemDto>? _ordersTable;
+    private string? _requestSearch;
+    private string? _orderSearch;
+    private PurchaseRequestStatus? _requestStatus;
+    private PurchaseOrderStatus? _orderStatus;
+    private bool _mineOnly;
+    private bool _canRaise;
+    private bool _canViewAll;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _canRaise = user.HasClaim(Permissions.ClaimType, Permissions.Procurement.Raise);
+            _canViewAll = user.HasClaim(Permissions.ClaimType, Permissions.Procurement.View);
+        }
+    }
+
+    private async Task<TableData<PurchaseRequestListItemDto>> LoadRequestsAsync(
+        TableState state, CancellationToken token)
+    {
+        var result = await Procurement.GetRequestsAsync(
+            _requestSearch, _requestStatus, _mineOnly, state.Page + 1, state.PageSize);
+        return new TableData<PurchaseRequestListItemDto>
+        {
+            Items = result?.Items ?? [],
+            TotalItems = result?.TotalCount ?? 0,
+        };
+    }
+
+    private async Task<TableData<PurchaseOrderListItemDto>> LoadOrdersAsync(
+        TableState state, CancellationToken token)
+    {
+        var result = await Procurement.GetOrdersAsync(
+            _orderSearch, _orderStatus, state.Page + 1, state.PageSize);
+        return new TableData<PurchaseOrderListItemDto>
+        {
+            Items = result?.Items ?? [],
+            TotalItems = result?.TotalCount ?? 0,
+        };
+    }
+
+    private Task ReloadRequestsAsync() => _requestsTable?.ReloadServerData() ?? Task.CompletedTask;
+
+    private Task ReloadOrdersAsync() => _ordersTable?.ReloadServerData() ?? Task.CompletedTask;
+
+    private Task OnRequestStatusChangedAsync(PurchaseRequestStatus? value)
+    {
+        _requestStatus = value;
+        return ReloadRequestsAsync();
+    }
+
+    private Task OnOrderStatusChangedAsync(PurchaseOrderStatus? value)
+    {
+        _orderStatus = value;
+        return ReloadOrdersAsync();
+    }
+
+    private Task OnMineOnlyChangedAsync(bool value)
+    {
+        _mineOnly = value;
+        return ReloadRequestsAsync();
+    }
+
+    private async Task NewRequestAsync()
+    {
+        var dialog = await DialogService.ShowAsync<RequestDialog>(
+            "New purchase request", new DialogParameters<RequestDialog>(),
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true });
+
+        var result = await dialog.Result;
+        if (result?.Canceled == false && result.Data is int id)
+        {
+            Snackbar.Add("Request created.", Severity.Success);
+            Navigation.NavigateTo($"/procurement/requests/{id}");
+        }
+    }
+}

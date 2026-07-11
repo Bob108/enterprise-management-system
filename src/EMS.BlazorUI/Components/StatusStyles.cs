@@ -15,6 +15,28 @@ public static class StatusStyles
         _ => Color.Default,
     };
 
+    public static Color For(PurchaseRequestStatus status) => status switch
+    {
+        PurchaseRequestStatus.Draft => Color.Default,
+        PurchaseRequestStatus.Submitted => Color.Info,
+        PurchaseRequestStatus.Approved => Color.Success,
+        PurchaseRequestStatus.Rejected => Color.Error,
+        PurchaseRequestStatus.Converted => Color.Primary,
+        PurchaseRequestStatus.Cancelled => Color.Dark,
+        _ => Color.Default,
+    };
+
+    public static Color For(PurchaseOrderStatus status) => status switch
+    {
+        PurchaseOrderStatus.Draft => Color.Default,
+        PurchaseOrderStatus.Issued => Color.Info,
+        PurchaseOrderStatus.PartiallyReceived => Color.Warning,
+        PurchaseOrderStatus.FullyReceived => Color.Success,
+        PurchaseOrderStatus.Closed => Color.Dark,
+        PurchaseOrderStatus.Cancelled => Color.Error,
+        _ => Color.Default,
+    };
+
     public static Color For(EmploymentStatus status) => status switch
     {
         EmploymentStatus.Active => Color.Success,

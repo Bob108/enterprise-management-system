@@ -42,6 +42,14 @@ public interface IInventoryRepository
     /// </summary>
     Task<bool> TryApplyMovementAsync(InventoryTransaction transaction, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stages (does NOT commit) a positive receipt so a caller can include it in a larger
+    /// unit of work — e.g. GRN posting, where stock, assets and PO updates must commit
+    /// together. Increments need no conditional-update guard; rowversion concurrency
+    /// protects against racing decrements.
+    /// </summary>
+    Task StageReceiptAsync(InventoryTransaction transaction, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<InventoryTransaction>> GetTransactionsAsync(
         int itemId, int take, CancellationToken cancellationToken = default);
 }

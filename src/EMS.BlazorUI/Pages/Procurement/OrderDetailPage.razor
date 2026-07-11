@@ -1,0 +1,270 @@
+@page "/procurement/orders/{Id:int}"
+@attribute [Authorize(Policy = "perm:" + Permissions.Procurement.View)]
+@inject ProcurementClient Procurement
+@inject WarehousesClient Warehouses
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>EMS — Purchase order</PageTitle>
+
+@if (_order is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/procurement"))" aria-label="Back" />
+        <MudText Typo="Typo.h5">@_order.OrderNumber</MudText>
+        <MudChip T="string" Size="Size.Small" Color="@StatusStyles.For(_order.Status)" Class="ml-2">
+            @_order.Status
+        </MudChip>
+    </MudStack>
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudGrid Spacing="2">
+                    <MudItem xs="6" sm="3">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Source request</MudText>
+                        <MudLink Href="@($"/procurement/requests/{_order.PurchaseRequestId}")">@_order.RequestNumber</MudLink>
+                    </MudItem>
+                    <MudItem xs="6" sm="3"><Field Label="Department" Value="@_order.DepartmentName" /></MudItem>
+                    <MudItem xs="6" sm="3"><Field Label="Supplier" Value="@_order.SupplierName" /></MudItem>
+                    <MudItem xs="6" sm="3"><Field Label="Order value" Value="@_order.TotalValue.ToString("N2")" /></MudItem>
+                    <MudItem xs="6" sm="3"><Field Label="Expected" Value="@(_order.ExpectedDate?.ToString("yyyy-MM-dd") ?? "—")" /></MudItem>
+                    <MudItem xs="12" sm="9"><Field Label="Notes" Value="@(_order.Notes ?? "—")" /></MudItem>
+                </MudGrid>
+
+                <MudStack Row="true" Spacing="2" Class="mt-4" Wrap="Wrap.Wrap">
+                    @if (_order.Status == PurchaseOrderStatus.Draft && _canManage)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Send" OnClick="IssueAsync">Issue to supplier</MudButton>
+                    }
+                    @if (_order.Status is PurchaseOrderStatus.Issued or PurchaseOrderStatus.PartiallyReceived && _canReceive)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Inventory" OnClick="OpenReceiveAsync">Receive goods</MudButton>
+                    }
+                    @if (_order.Status is PurchaseOrderStatus.Draft or PurchaseOrderStatus.Issued && _canManage)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Cancel" OnClick="CancelAsync">Cancel order</MudButton>
+                    }
+                    @if (_order.Status == PurchaseOrderStatus.FullyReceived && _canManage)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Done" OnClick="CloseAsync">Close order</MudButton>
+                    }
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Lines</MudText>
+                <MudSimpleTable Dense="true">
+                    <thead>
+                        <tr>
+                            <th>Description</th><th>Nature</th>
+                            <th style="text-align: right;">Ordered</th>
+                            <th style="text-align: right;">Received</th>
+                            <th style="text-align: right;">Outstanding</th>
+                            <th style="text-align: right;">Unit price</th>
+                            <th style="text-align: right;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in _order.Lines)
+                        {
+                            <tr>
+                                <td>@line.Description</td>
+                                <td>@line.Nature</td>
+                                <td style="text-align: right;">@line.OrderedQuantity</td>
+                                <td style="text-align: right;">@line.ReceivedQuantity</td>
+                                <td style="text-align: right;">@(line.OrderedQuantity - line.ReceivedQuantity)</td>
+                                <td style="text-align: right;">@line.UnitPrice.ToString("N2")</td>
+                                <td style="text-align: right;">@((line.OrderedQuantity * line.UnitPrice).ToString("N2"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Goods received (@_order.Grns.Count)</MudText>
+                @if (_order.Grns.Count == 0)
+                {
+                    <MudText Typo="Typo.body2">Nothing received yet.</MudText>
+                }
+                else
+                {
+                    @foreach (var grn in _order.Grns)
+                    {
+                        <MudPaper Class="pa-3 mb-2" Outlined="true">
+                            <MudText Typo="Typo.subtitle2">@grn.GrnNumber — @grn.ReceivedAtUtc.ToString("yyyy-MM-dd HH:mm")</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                By @(grn.ReceivedBy ?? "—")@(grn.WarehouseName is not null ? $" · into {grn.WarehouseName}" : "")
+                            </MudText>
+                            @foreach (var line in grn.Lines)
+                            {
+                                <MudText Typo="Typo.body2">• @line.Quantity × @line.Description</MudText>
+                            }
+                        </MudPaper>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudDialog @bind-Visible="_receiveOpen" Options="_dialogOptions">
+        <TitleContent><MudText Typo="Typo.h6">Receive goods — @_order.OrderNumber</MudText></TitleContent>
+        <DialogContent>
+            @if (_receiveError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_receiveError.FullMessage</MudAlert>
+            }
+            @if (_hasConsumables)
+            {
+                <MudSelect T="int?" @bind-Value="_warehouseId" Label="Warehouse (for consumables)"
+                           Variant="Variant.Outlined" Class="mb-3">
+                    @foreach (var w in _warehouses)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)w.Id)">@w.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Quantities received now</MudText>
+            @foreach (var line in _receiveLines)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.body2" Style="min-width: 55%;">
+                        @line.Description (@line.Outstanding outstanding)
+                    </MudText>
+                    <MudNumericField T="int" @bind-Value="line.Quantity" Label="Qty"
+                                     Variant="Variant.Outlined" Min="0" Max="@line.Outstanding"
+                                     Margin="Margin.Dense" />
+                </MudStack>
+            }
+            <MudTextField T="string" @bind-Value="_receiveNotes" Label="Notes"
+                          Variant="Variant.Outlined" Class="mt-2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _receiveOpen = false">Cancel</MudButton>
+            <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="ReceiveAsync">Post receipt</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private sealed class ReceiveLineForm
+    {
+        public int LineId { get; init; }
+        public string Description { get; init; } = string.Empty;
+        public int Outstanding { get; init; }
+        public bool IsConsumable { get; init; }
+        public int Quantity { get; set; }
+    }
+
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Medium, FullWidth = true };
+    private PurchaseOrderDetailDto? _order;
+    private List<WarehouseDto> _warehouses = [];
+    private readonly List<ReceiveLineForm> _receiveLines = [];
+    private bool _receiveOpen;
+    private bool _hasConsumables;
+    private int? _warehouseId;
+    private string? _receiveNotes;
+    private ApiError? _receiveError;
+    private bool _canManage;
+    private bool _canReceive;
+
+    [Parameter]
+    public int Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            _canManage = user.HasClaim(Permissions.ClaimType, Permissions.Procurement.ManagePurchaseOrders);
+            _canReceive = user.HasClaim(Permissions.ClaimType, Permissions.Procurement.ReceiveGoods);
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _order = await Procurement.GetOrderAsync(Id);
+
+    private Task IssueAsync() => RunAsync(() => Procurement.IssueAsync(Id), "Order issued.");
+
+    private Task CancelAsync() => RunAsync(() => Procurement.CancelOrderAsync(Id), "Order cancelled.");
+
+    private Task CloseAsync() => RunAsync(() => Procurement.CloseAsync(Id), "Order closed.");
+
+    private async Task OpenReceiveAsync()
+    {
+        _warehouses = await Warehouses.GetAllAsync() ?? [];
+        _receiveLines.Clear();
+        foreach (var line in _order!.Lines.Where(l => l.ReceivedQuantity < l.OrderedQuantity))
+        {
+            _receiveLines.Add(new ReceiveLineForm
+            {
+                LineId = line.Id,
+                Description = line.Description,
+                Outstanding = line.OrderedQuantity - line.ReceivedQuantity,
+                IsConsumable = line.Nature == ItemNature.Consumable,
+                Quantity = line.OrderedQuantity - line.ReceivedQuantity, // default: receive everything
+            });
+        }
+
+        _hasConsumables = _receiveLines.Any(l => l.IsConsumable);
+        _warehouseId = _hasConsumables ? _warehouses.FirstOrDefault()?.Id : null;
+        _receiveError = null;
+        _receiveOpen = true;
+    }
+
+    private async Task ReceiveAsync()
+    {
+        var lines = _receiveLines
+            .Where(l => l.Quantity > 0)
+            .Select(l => new ReceiveGoodsLine(l.LineId, l.Quantity))
+            .ToList();
+
+        if (lines.Count == 0)
+        {
+            Snackbar.Add("Enter at least one quantity.", Severity.Warning);
+            return;
+        }
+
+        var error = await Procurement.ReceiveAsync(Id, new ReceiveGoodsRequest(_warehouseId, _receiveNotes, lines));
+        if (error is null)
+        {
+            _receiveOpen = false;
+            Snackbar.Add("Goods received — assets created and stock posted.", Severity.Success);
+            await LoadAsync();
+        }
+        else
+        {
+            _receiveError = error;
+        }
+    }
+
+    private async Task RunAsync(Func<Task<ApiError?>> action, string successMessage)
+    {
+        var error = await action();
+        if (error is null)
+        {
+            Snackbar.Add(successMessage, Severity.Success);
+            await LoadAsync();
+        }
+        else
+        {
+            Snackbar.Add(error.FullMessage, Severity.Error);
+        }
+    }
+}
